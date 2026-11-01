@@ -1,0 +1,22 @@
+[
+    {
+        "types": [
+            "dynamic.prop.soldier"
+        ],
+        "count": 3,
+        "points": [
+            {
+                "position": "-1545.53, -190.32, 2.69",
+                "rotation": "0,0,0"
+            },
+            {
+                "position": "-1472.53, -435.32, 2.69",
+                "rotation": "0,0,0"
+            },
+            {
+                "position": "-1835.53, -875.32, 2.69",
+                "rotation": "0,0,0"
+            }
+        ]
+    }
+]

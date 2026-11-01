@@ -1,220 +1,124 @@
-# Byte-compiled / optimized / DLL files
+﻿# ============================================================================
+#  智能无人系统技术 —— 仓库忽略规则
+# ============================================================================
+#  核心原则：仓库里只放"我们自己写的、或我们会改的"东西。
+#            课程发的环境/二进制/教程一律不进库。
+#
+#  为什么这么严格（实测数据）：
+#    · 整个项目目录              10,285 MB / 52,097 个文件
+#    · environment_forclass      10,021 MB / 50,314 个文件（UE4 打包环境 + SDK）
+#    · Materials/simu_driver     124 MB（课程发的飞控驱动，含 cygwin 运行时）
+#    · Materials/...Tutorial     55 MB（五讲教程，含 36 MB 的 gif / 10 MB 的 mp4）
+#    · 有 5 个单文件超过 100 MB —— 这是 GitHub 的硬上限，
+#      一旦被 add 进仓库，push 会被直接拒绝，而且很难从历史里清掉。
+#
+#  → 只保留 WorkPlace + easy_follow 代码 + 场景 json，仓库约 1.5 MB，克隆几秒。
+# ============================================================================
+
+
+# ---------------------------------------------------------------------------
+# 1. 课程提供的仿真环境（10 GB，含 >100MB 单文件）—— 绝对不能进仓库
+# ---------------------------------------------------------------------------
+/environment_forclass/
+
+
+# ---------------------------------------------------------------------------
+# 2. 课程提供的二进制 / 工具链 / 教程（不进库，由新成员从课程包自行放入）
+# ---------------------------------------------------------------------------
+/Materials/simu_driver_windows/
+/Materials/Autonomous_Vehicle_PnC_Tutorial-master/
+
+# 场景生成器（每个 8.1 MB，只是把 json 渲染成 3D 场景，改了 json 就够）
+/Materials/practice/*/subject4.exe
+/Materials/practice/*/*.exe
+
+# 根目录的课程文档与快捷方式（.lnk 里存的是本机绝对路径，换机器就失效）
+/UE4 仿真环境配置与安装*.pdf
+/智能无人系统技术课程设计任务说明*.pptx
+/CarlaUE4 - 快捷方式.lnk
+
+
+# ---------------------------------------------------------------------------
+# 3. 运行时生成物（每次跑都会重新生成，进库只会污染 diff）
+# ---------------------------------------------------------------------------
+# image_process.skeleton_refinement() 每次往"当前目录"写 66 MB 的 tga + 80 KB 的 png
+skeletonized_image.tga
+skeletonized_image.png
+
+# 驱动/仿真的日志（实测其中一个就有 35.7 MB）
+*.log
+/Materials/simu_driver_windows/log/
+
+# 训练/规划过程的临时输出
+*.tmp
+*.temp
+temp/
+tmp/
+
+
+# ---------------------------------------------------------------------------
+# 4. Python
+# ---------------------------------------------------------------------------
 __pycache__/
-*.py[codz]
+*.py[cod]
+*.pyo
 *$py.class
-
-# C extensions
-*.so
-
-# Distribution / packaging
 .Python
 build/
-develop-eggs/
 dist/
-downloads/
-eggs/
-.eggs/
-lib/
-lib64/
-parts/
-sdist/
-var/
-wheels/
-share/python-wheels/
 *.egg-info/
-.installed.cfg
-*.egg
-MANIFEST
-
-# PyInstaller
-#   Usually these files are written by a python script from a template
-#   before PyInstaller builds the exe, so as to inject date/other infos into it.
-*.manifest
-*.spec
-
-# Installer logs
-pip-log.txt
-pip-delete-this-directory.txt
-
-# Unit test / coverage reports
-htmlcov/
-.tox/
-.nox/
-.coverage
-.coverage.*
-.cache
-nosetests.xml
-coverage.xml
-*.cover
-*.py.cover
-*.lcov
-.hypothesis/
-.pytest_cache/
-cover/
-
-# Translations
-*.mo
-*.pot
-
-# Django stuff:
-*.log
-local_settings.py
-db.sqlite3
-db.sqlite3-journal
-
-# Flask stuff:
-instance/
-.webassets-cache
-
-# Scrapy stuff:
-.scrapy
-
-# Sphinx documentation
-docs/_build/
-
-# PyBuilder
-.pybuilder/
-target/
-
-# Jupyter Notebook
-.ipynb_checkpoints
-
-# IPython
-profile_default/
-ipython_config.py
-
-# pyenv
-#   For a library or package, you might want to ignore these files since the code is
-#   intended to run in multiple environments; otherwise, check them in:
-# .python-version
-
-# pipenv
-#   According to pypa/pipenv#598, it is recommended to include Pipfile.lock in version control.
-#   However, in case of collaboration, if having platform-specific dependencies or dependencies
-#   having no cross-platform support, pipenv may install dependencies that don't work, or not
-#   install all needed dependencies.
-# Pipfile.lock
-
-# uv
-#   Similar to Pipfile.lock, it is generally recommended to include uv.lock in version control.
-#   This is especially recommended for binary packages to ensure reproducibility, and is more
-#   commonly ignored for libraries.
-# uv.lock
-
-# poetry
-#   Similar to Pipfile.lock, it is generally recommended to include poetry.lock in version control.
-#   This is especially recommended for binary packages to ensure reproducibility, and is more
-#   commonly ignored for libraries.
-#   https://python-poetry.org/docs/basic-usage/#commit-your-poetrylock-file-to-version-control
-# poetry.lock
-# poetry.toml
-
-# pdm
-#   Similar to Pipfile.lock, it is generally recommended to include pdm.lock in version control.
-#   pdm recommends including project-wide configuration in pdm.toml, but excluding .pdm-python.
-#   https://pdm-project.org/en/latest/usage/project/#working-with-version-control
-# pdm.lock
-# pdm.toml
-.pdm-python
-.pdm-build/
-
-# pixi
-#   Similar to Pipfile.lock, it is generally recommended to include pixi.lock in version control.
-# pixi.lock
-#   Pixi creates a virtual environment in the .pixi directory, just like venv module creates one
-#   in the .venv directory. It is recommended not to include this directory in version control.
-.pixi/*
-!.pixi/config.toml
-
-# PEP 582; used by e.g. github.com/David-OConnor/pyflow and github.com/pdm-project/pdm
-__pypackages__/
-
-# Celery stuff
-celerybeat-schedule*
-celerybeat.pid
-
-# Redis
-*.rdb
-*.aof
-*.pid
-
-# RabbitMQ
-mnesia/
-rabbitmq/
-rabbitmq-data/
-
-# ActiveMQ
-activemq-data/
-
-# SageMath parsed files
-*.sage.py
-
-# Environments
-.env
-.envrc
-.venv
-env/
+.eggs/
 venv/
-ENV/
-env.bak/
-venv.bak/
+.venv/
+env/
+.pytest_cache/
+.ipynb_checkpoints/
 
-# Spyder project settings
-.spyderproject
-.spyproject
 
-# Rope project settings
-.ropeproject
+# ---------------------------------------------------------------------------
+# 5. 编辑器 / 操作系统
+# ---------------------------------------------------------------------------
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+Thumbs.db
+desktop.ini
+.DS_Store
 
-# mkdocs/Zensical documentation
-/site
 
-# mypy
-.mypy_cache/
-.dmypy.json
-dmypy.json
+# ---------------------------------------------------------------------------
+# 6. 明确要保留的（防止被上面的通配符误伤）
+# ---------------------------------------------------------------------------
+# 场景配置是我们会改的东西，虽然小但很重要，务必留：
+#   Materials/practice/practice1_Scene/{vehicles,targets,game,elements,rands}.json
+# 路网图是 tools/scene_map.py 的输入，84 KB：
+#   Materials/practice/easy_follow/lib/roadnet.png
+# WorkPlace 下的一切（代码/文档/工具/成果图）全部保留。
 
-# Pyre type checker
-.pyre/
+# ---------------------------------------------------------------------------
+# 7. 运行时输出（每次跑都会新增，进库只会越来越大）
+# ---------------------------------------------------------------------------
+/WorkPlace/figs/uav_view/
+/WorkPlace/figs/track_log_*.csv
+/WorkPlace/figs/live_snapshot_*.png
 
-# pytype static type analyzer
-.pytype/
+# ---------------------------------------------------------------------------
+# 8. 组员代码 / 运行产物
+# ---------------------------------------------------------------------------
+# 无人机模块的日志与状态快照（control_uav.py 自动生成）
+/codex_outputs/
+# 离线自测生成的截图
+/WorkPlace/selftest/*.png
 
-# Cython debug symbols
-cython_debug/
+# ---------------------------------------------------------------------------
+# 9. 课程讲义 / 大体积素材（不属于代码，可由课程包再次获得）
+# ---------------------------------------------------------------------------
+/Materials/*.pptx
+/Materials/*.pdf
+/Materials/practice/easy_follow/map.jpg
 
-# PyCharm
-#   JetBrains specific template is maintained in a separate JetBrains.gitignore that can
-#   be found at https://github.com/github/gitignore/blob/main/Global/JetBrains.gitignore
-#   and can be added to the global gitignore or merged into this file.  For a more nuclear
-#   option (not recommended) you can uncomment the following to ignore the entire idea folder.
-# .idea/
+# PowerShell 误重定向产物
+/$null
 
-# Abstra
-#   Abstra is an AI-powered process automation framework.
-#   Ignore directories containing user credentials, local state, and settings.
-#   Learn more at https://abstra.io/docs
-.abstra/
-
-# Visual Studio Code
-#   Visual Studio Code specific template is maintained in a separate VisualStudioCode.gitignore that
-#   can be found at https://github.com/github/gitignore/blob/main/Global/VisualStudioCode.gitignore
-#   and can be added to the global gitignore or merged into this file. However, if you prefer, you
-#   could uncomment the following to ignore the entire vscode folder
-# .vscode/
-# Temporary file for partial code execution
-tempCodeRunnerFile.py
-
-# Ruff stuff:
-.ruff_cache/
-
-# PyPI configuration file
-.pypirc
-
-# Marimo
-marimo/_static/
-marimo/_lsp/
-__marimo__/
-
-# Streamlit
-.streamlit/secrets.toml

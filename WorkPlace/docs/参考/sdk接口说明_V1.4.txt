@@ -1,0 +1,868 @@
+仿真接口说明
+文档修订记录
+[TABLE]
+版本编号或者更改记录编号 | *变化 状态 | 简要说明（变更内容和变更范围） | 修订人 | 日期
+V1.0 | A | 新增 | 黄学波 | 2023/07/13
+V1.1 | M | 阶段完成接口描述 | 张修红 | 2023/07/19
+V1.2 | M | 1、修改阶段完成方法（stage_complete）； 2、新增阶段开始的方法（stage_start）； | 黄学波 | 2023/07/20
+V1.3 | M | 一、修改SwarmAEWeapon类中的： 1、get_weapon_angle() 接口 2、get_weapon_config() 修改为预留接口 3、set_weapon_ammo()修改为预留接口 4、set_weapon_energy(…args)修改为预留接口 二修改使用范例的demo | 黄学波 | 2023/07/27
+V1.4 | D | 删除SwarmAESensor类、 删除SwarmAESensorBasic类、 删除SwarmAENode类中的launch_kinetic、control_kinetic_full、 get_kinetic_data接口 | 李浩宇 | 2023/08/17
+[/TABLE]
+*变化状态：A——增加，M——修改，D——删除
+## SwarmAEClient类声明
+[TABLE]
+类名 | SwarmAEClient | SwarmAEClient | SwarmAEClient
+类说明 | 节点客户端，提供连接和注册初始化工作 | 节点客户端，提供连接和注册初始化工作 | 节点客户端，提供连接和注册初始化工作
+类别 | 定义 | 返回值 | 含义
+变量 | ue_ip |  | 连接的仿真UE地址
+变量 | ue_port |  | 连接的仿真Ue端口
+方法 | register_node(…args) | SwarmAENode类 | 注册节点接入平台接口
+方法 | get_world() | SwarmAEWorld类 | 获取UE环境
+方法 | get_game() | SwarmAEGame类 | 获取游戏
+[/TABLE]
+## register_node(…args) -注册节点接入平台接口
+[TABLE]
+接口名称 | 注册节点接入平台接口 | 注册节点接入平台接口 | 注册节点接入平台接口 | 注册节点接入平台接口
+接口方法 | register_node(…args) | register_node(…args) | register_node(…args) | register_node(…args)
+接口说明 | 根据节点信息向平台注册接入，接入成功返回注册节点 | 根据节点信息向平台注册接入，接入成功返回注册节点 | 根据节点信息向平台注册接入，接入成功返回注册节点 | 根据节点信息向平台注册接入，接入成功返回注册节点
+类别 | 字段 | 字段名 | 数据类型 | 说明
+输入 | node_type | 节点类型 | str | 可选项：“四轮车”, “固定翼”, “四旋翼”
+输入 | node_name | 节点名称 | str | 参赛队自定义
+输入 | node_no | 节点编号 | int | 队伍中编号（从1计数） 打击车1号 打击车2号 打击车3号 电磁干扰车1号 电磁干扰车2号 扫雷车1号 扫雷车2号 无人机1号 无人机2号 无人机3号 根据此编号创建
+输入 | frame_timestamp | 当前帧时间戳 |  | 
+输出 | frame_timestamp | 返回帧时间戳 |  | 
+输出 | SwarmAENode | 节点对象 | SwarmAENode | 
+输出 | code | 状态码 | int | 
+状态码 | 200-成功 50X-失败 40X-超时 | 200-成功 50X-失败 40X-超时 | 200-成功 50X-失败 40X-超时 | 200-成功 50X-失败 40X-超时
+[/TABLE]
+## get_world() -获取仿真世界接口
+[TABLE]
+接口名称 | 获取仿真世界接口 | 获取仿真世界接口 | 获取仿真世界接口 | 获取仿真世界接口
+接口方法 | get_world() | get_world() | get_world() | get_world()
+接口说明 | 获取当前仿真世界接口 | 获取当前仿真世界接口 | 获取当前仿真世界接口 | 获取当前仿真世界接口
+类别 | 字段 | 字段名 | 数据类型 | 说明
+输入 | - | - | - | 
+输出 | frame_timestamp | 返回帧时间戳 |  | 
+输出 | swarmAEWorld | 仿真世界 |  | 
+输出 | code | 状态码 | int | 
+状态码 | 200-成功 50X-失败 40X-超时 | 200-成功 50X-失败 40X-超时 | 200-成功 50X-失败 40X-超时 | 200-成功 50X-失败 40X-超时
+[/TABLE]
+## get_game() -获取游戏接口
+[TABLE]
+接口名称 | 获取游戏接口 | 获取游戏接口 | 获取游戏接口 | 获取游戏接口
+接口方法 | get_game() | get_game() | get_game() | get_game()
+接口说明 | 获取当前游戏 | 获取当前游戏 | 获取当前游戏 | 获取当前游戏
+类别 | 字段 | 字段名 | 数据类型 | 说明
+输入 | - | - | - | 
+输出 | frame_timestamp | 返回帧时间戳 |  | 
+输出 | swarmAEGame | 游戏 |  | 
+输出 | code | 状态码 | int | 
+状态码 | 200-成功 50X-失败 40X-超时 | 200-成功 50X-失败 40X-超时 | 200-成功 50X-失败 40X-超时 | 200-成功 50X-失败 40X-超时
+[/TABLE]
+## SwarmAEActor类声明
+[TABLE]
+类名 | SwarmAEActor | SwarmAEActor | SwarmAEActor
+类说明 | 角色实例抽象父类，派生出Node、Sensor和Weapon等实例类，并提供通用的相关基础信息接口 | 角色实例抽象父类，派生出Node、Sensor和Weapon等实例类，并提供通用的相关基础信息接口 | 角色实例抽象父类，派生出Node、Sensor和Weapon等实例类，并提供通用的相关基础信息接口
+类别 | 定义 | 返回值 | 含义
+变量 | node_id |  | 节点唯一ID
+变量 | health |  | 生命值
+变量 | energy |  | 能源值
+变量 | color |  | 颜色
+变量 | size |  | 尺寸
+方法 | get_node_id() | node_id | 获取id
+方法 | get_health () | health | 获取生命值
+方法 | get_energy() | energy | 获取能源
+方法 | get_color() | color | 获取颜色
+方法 | get_size() | size | 获取尺寸
+[/TABLE]
+## SwarmAENode类声明
+[TABLE]
+类名 | SwarmAENode | SwarmAENode | SwarmAENode
+类说明 | 节点实例类，继承SwarmAEActor类。提供获取节点的相关信息接口 | 节点实例类，继承SwarmAEActor类。提供获取节点的相关信息接口 | 节点实例类，继承SwarmAEActor类。提供获取节点的相关信息接口
+类别 | 定义 | 返回值 | 含义
+变量 |  |  | 
+方法 | get_node_info() | Name、type等值 | 注册节点接入平台接口
+方法 | get_location() | Xyz等值 | 获取UE环境
+方法 | get_attitude() | Yaw/pitch/roll等值 | 获取位置
+方法 | get_velocity() | Velocity_x等值 | 获取速度
+方法 | get_health() | Current_health值 | 获取生命值
+方法 | get_damage() | Damage等值 | 获取中弹损伤
+方法 | get_sim_status() | Sim_status等值 | 获取仿真状态
+方法 | get_sensor() | Load_type等值 | 获取节点传感器载荷
+方法 | get_weapon() | weapon等值 | 获取节点武器载荷
+方法 | control_kinetic_simply(…args) |  | 动力学控制信息接口（简单飞控，按目标点）
+方法 | get_kinetic_data_simply() | 无人机位置姿态等值 | 获取飞行数据
+方法 | control_vehicle(…args) |  | 设置车辆油门
+方法 | set_vehicle_steer(…args) |  | 设置车辆转向
+方法 | set_vehicle_brake(…args) |  | 设置车辆刹车
+方法 | set_vehicle_handle_brake(…args) |  | 设置车辆手刹
+方法 | set_vehicle_gear(…args) |  | 设置车辆发动机档位
+方法 | apply_vehicle_control(…args) |  | 控制车辆行为
+方法 | get_vehicle_status() |  | 获取车辆控制量
+方法 | send_msg(…args) |  | 通过组网通讯发送消息
+方法 | receive_msg() |  | 接收组网通讯上发送过来的消息
+方法 | missile_fire() |  | 发射导弹
+ | set_emc_angle() |  | 设置电磁对抗干扰车的干扰扇面角度
+ | control_emc() |  | 控制电磁对抗车电磁对抗的开/关
+ | detect_situation() | Actor信息 | 获取探测半径内的Actor信息
+[/TABLE]
+## get_node_info() -获取节点基本信息接口
+[TABLE]
+接口名称 | 获取节点基本信息接口 | 获取节点基本信息接口 | 获取节点基本信息接口 | 获取节点基本信息接口
+接口方法 | get_node_info() | get_node_info() | get_node_info() | get_node_info()
+接口说明 | 获取该节点的基本信息，包括类型、编号、编队等 | 获取该节点的基本信息，包括类型、编号、编队等 | 获取该节点的基本信息，包括类型、编号、编队等 | 获取该节点的基本信息，包括类型、编号、编队等
+类别 | 字段 | 字段名 | 数据类型 | 说明
+输入 |  |  |  | 
+输出 | node_name | 节点名称 |  | 
+输出 | node_no | 节点编号 |  | 队伍中编号
+输出 | team | 节点编队归属(红/蓝) |  | 红蓝方
+输出 | node_type | 节点类型 |  | 车/飞机、侦察类型/打击类型
+输出 | node_model | 节点模型 |  | 具体型号
+输出 | color | 颜色 |  | 
+状态码 | 200-成功 50X-失败 40X-超时 | 200-成功 50X-失败 40X-超时 | 200-成功 50X-失败 40X-超时 | 200-成功 50X-失败 40X-超时
+[/TABLE]
+## get_location() -获取节点位置信息接口
+[TABLE]
+接口名称 | 获取节点位置信息接口 | 获取节点位置信息接口 | 获取节点位置信息接口 | 获取节点位置信息接口
+接口方法 | get_location() | get_location() | get_location() | get_location()
+接口说明 | 根据节点实例获取当前节点的位置信息 | 根据节点实例获取当前节点的位置信息 | 根据节点实例获取当前节点的位置信息 | 根据节点实例获取当前节点的位置信息
+类别 | 字段 | 字段名 | 数据类型 | 说明
+输入 |  |  |  | 
+输出 | x | x |  | 坐标
+输出 | y | y |  | 坐标
+输出 | z | z |  | 坐标
+输出 | frame_timestamp | 当前帧时间戳 |  | 
+状态码 | 200-成功 50X-失败 40X-超时 | 200-成功 50X-失败 40X-超时 | 200-成功 50X-失败 40X-超时 | 200-成功 50X-失败 40X-超时
+[/TABLE]
+## get_attitude() -获取节点姿态信息接口
+[TABLE]
+接口名称 | 获取节点姿态信息接口 | 获取节点姿态信息接口 | 获取节点姿态信息接口 | 获取节点姿态信息接口
+接口方法 | get_attitude() | get_attitude() | get_attitude() | get_attitude()
+接口说明 | 获取当前节点的姿态信息 | 获取当前节点的姿态信息 | 获取当前节点的姿态信息 | 获取当前节点的姿态信息
+类别 | 字段 | 字段名 | 数据类型 | 说明
+输入 |  |  |  | 
+输出 | yaw | 偏航角 |  | 
+输出 | pitch | 俯仰角 |  | 
+输出 | roll | 翻滚角 |  | 
+输出 | heading | 朝向 |  | 
+输出 | frame_timestamp | 当前帧时间戳 |  | 
+状态码 | 200-成功 50X-失败 40X-超时 | 200-成功 50X-失败 40X-超时 | 200-成功 50X-失败 40X-超时 | 200-成功 50X-失败 40X-超时
+[/TABLE]
+## get_velocity() -获取节点速度信息接口
+[TABLE]
+接口名称 | 获取节点速度信息接口 | 获取节点速度信息接口 | 获取节点速度信息接口 | 获取节点速度信息接口
+接口方法 | get_velocity() | get_velocity() | get_velocity() | get_velocity()
+接口说明 | 获取当前节点的速度信息 | 获取当前节点的速度信息 | 获取当前节点的速度信息 | 获取当前节点的速度信息
+类别 | 字段 | 字段名 | 数据类型 | 说明
+输入 |  |  |  | 
+输出 | velocity_x | X分量速度 |  | 
+输出 | velocity_y | y分量速度 |  | 
+输出 | velocity_z | z分量速度 |  | 
+输出 | velocity | 速度 |  | 
+输出 | acc_x | X分量加速度 |  | 
+输出 | acc_y | y分量加速度 |  | 
+输出 | acc_z | z分量加速度 |  | 
+输出 | acceleration | 加速度 |  | 
+输出 | gs | 地速 |  | 无人机
+输出 | p | 滚转角速度 | (-\infin,\infin) | 无人机
+输出 | q | 俯仰角速度 | (-\infin,\infin) | 无人机
+输出 | r | 航向角速度 | (-\infin,\infin) | 无人机
+输出 | frame_timestamp | 当前帧时间戳 |  | 
+状态码 | 200-成功 50X-失败 40X-超时 | 200-成功 50X-失败 40X-超时 | 200-成功 50X-失败 40X-超时 | 200-成功 50X-失败 40X-超时
+[/TABLE]
+## get_health() -获取节点生命值信息接口
+[TABLE]
+接口名称 | 获取节点生命值信息接口 | 获取节点生命值信息接口 | 获取节点生命值信息接口 | 获取节点生命值信息接口
+接口方法 | get_health() | get_health() | get_health() | get_health()
+接口说明 | 获取当前节点的生命值信息 | 获取当前节点的生命值信息 | 获取当前节点的生命值信息 | 获取当前节点的生命值信息
+类别 | 字段 | 字段名 | 数据类型 | 说明
+输入 |  |  |  | 
+输出 | current_health | 当前生命值 |  | 
+输出 | frame_timestamp | 当前帧时间戳 |  | 
+状态码 | 200-成功 50X-失败 40X-超时 | 200-成功 50X-失败 40X-超时 | 200-成功 50X-失败 40X-超时 | 200-成功 50X-失败 40X-超时
+[/TABLE]
+## get_damage() -获取节点中弹信息接口
+[TABLE]
+接口名称 | 获取节点中弹信息接口 | 获取节点中弹信息接口 | 获取节点中弹信息接口 | 获取节点中弹信息接口
+接口方法 | get_damage() | get_damage() | get_damage() | get_damage()
+接口说明 | 获取当前节点的中弹信息 | 获取当前节点的中弹信息 | 获取当前节点的中弹信息 | 获取当前节点的中弹信息
+类别 | 字段 | 字段名 | 数据类型 | 说明
+输入 |  |  |  | 
+输出 | damage | 损伤程度 |  | 
+输出 | is_hit | 是否中弹 |  | 
+输出 | frame_timestamp | 当前帧时间戳 |  | 
+状态码 | 200-成功 50X-失败 40X-超时 | 200-成功 50X-失败 40X-超时 | 200-成功 50X-失败 40X-超时 | 200-成功 50X-失败 40X-超时
+[/TABLE]
+## get_sim_status() -获取节点仿真状态信息接口
+[TABLE]
+接口名称 | 获取节点仿真状态信息接口 | 获取节点仿真状态信息接口 | 获取节点仿真状态信息接口 | 获取节点仿真状态信息接口
+接口方法 | get_sim_status() | get_sim_status() | get_sim_status() | get_sim_status()
+接口说明 | 获取当前节点的仿真状态信息，包括仿真中断/仿真正常/仿真未完成/完成待命/仿真失败等 | 获取当前节点的仿真状态信息，包括仿真中断/仿真正常/仿真未完成/完成待命/仿真失败等 | 获取当前节点的仿真状态信息，包括仿真中断/仿真正常/仿真未完成/完成待命/仿真失败等 | 获取当前节点的仿真状态信息，包括仿真中断/仿真正常/仿真未完成/完成待命/仿真失败等
+类别 | 字段 | 字段名 | 数据类型 | 说明
+输入 |  |  |  | 
+输出 | sim_status | 当前仿真状态 |  | 仿真中断/仿真正常/仿真未完成/完成待命/仿真失败
+输出 | frame_timestamp | 当前帧时间戳 |  | 
+状态码 | 200-成功 50X-失败 40X-超时 | 200-成功 50X-失败 40X-超时 | 200-成功 50X-失败 40X-超时 | 200-成功 50X-失败 40X-超时
+[/TABLE]
+## set_sensor(…args) -设置节点传感器信息接口
+[TABLE]
+接口名称 | 设置节点传感器信息接口 | 设置节点传感器信息接口 | 设置节点传感器信息接口 | 设置节点传感器信息接口
+接口方法 | set_sensor(…args) | set_sensor(…args) | set_sensor(…args) | set_sensor(…args)
+接口说明 | 设置节点传感器载荷 | 设置节点传感器载荷 | 设置节点传感器载荷 | 设置节点传感器载荷
+类别 | 字段 | 字段名 | 数据类型 | 说明
+输入 | load_slot | 插槽 |  | 
+输入 | SwarmAESensor | 传感器载荷 | SwarmAESensor类型 | 
+输入 | frame_timestamp | 当前帧时间戳 |  | 
+输出 | frame_timestamp | 响应帧时间戳 |  | 
+输出 | code | 返回状态码 |  | 
+状态码 | 200-成功 50X-失败 40X-超时 | 200-成功 50X-失败 40X-超时 | 200-成功 50X-失败 40X-超时 | 200-成功 50X-失败 40X-超时
+[/TABLE]
+## get_sensor() -获取节点传感器信息接口
+[TABLE]
+接口名称 | 获取节点传感器信息接口 | 获取节点传感器信息接口 | 获取节点传感器信息接口 | 获取节点传感器信息接口
+接口方法 | get_sensor(…args) | get_sensor(…args) | get_sensor(…args) | get_sensor(…args)
+接口说明 | 获取节点传感器载荷 | 获取节点传感器载荷 | 获取节点传感器载荷 | 获取节点传感器载荷
+类别 | 字段 | 字段名 | 数据类型 | 说明
+输入 |  |  |  | 
+输出 | load_slot | 插槽 |  | 数组
+输出 | SwarmAESensor | 传感器 | SwarmAESensor类型 | 数组
+输出 | frame_timestamp | 当前帧时间戳 |  | 
+输出 | code | 返回状态码 |  | 
+状态码 | 200-成功 50X-失败 40X-超时 | 200-成功 50X-失败 40X-超时 | 200-成功 50X-失败 40X-超时 | 200-成功 50X-失败 40X-超时
+[/TABLE]
+## set_weapon(…args) -设置节点武器信息接口
+[TABLE]
+接口名称 | 设置节点武器信息接口 | 设置节点武器信息接口 | 设置节点武器信息接口 | 设置节点武器信息接口
+接口方法 | set_weapon(…args) | set_weapon(…args) | set_weapon(…args) | set_weapon(…args)
+接口说明 | 设置节点武器载荷 | 设置节点武器载荷 | 设置节点武器载荷 | 设置节点武器载荷
+类别 | 字段 | 字段名 | 数据类型 | 说明
+输入 | load_slot | 插槽 |  | 
+输入 | SwarmAEWeapon | 火力载荷 | SwarmAEWeapon类型 | 
+输入 | frame_timestamp | 当前帧时间戳 |  | 
+输出 | frame_timestamp | 响应帧时间戳 |  | 
+输出 | code | 返回状态码 |  | 
+状态码 | 200-成功 50X-失败 40X-超时 | 200-成功 50X-失败 40X-超时 | 200-成功 50X-失败 40X-超时 | 200-成功 50X-失败 40X-超时
+[/TABLE]
+## get_weapon() -获取节点武器信息接口
+[TABLE]
+接口名称 | 获取节点武器信息接口 | 获取节点武器信息接口 | 获取节点武器信息接口 | 获取节点武器信息接口
+接口方法 | get_weapon(…args) | get_weapon(…args) | get_weapon(…args) | get_weapon(…args)
+接口说明 | 获取节点武器载荷 | 获取节点武器载荷 | 获取节点武器载荷 | 获取节点武器载荷
+类别 | 字段 | 字段名 | 数据类型 | 说明
+输入 |  |  |  | 
+输出 | load_slot | 插槽 |  | 数组
+输出 | SwarmAEWeapon | 火力载荷 | SwarmAEWeapon类型 | 数组
+输出 | frame_timestamp | 当前帧时间戳 |  | 
+输出 | code | 返回状态码 |  | 
+状态码 | 200-成功 50X-失败 40X-超时 | 200-成功 50X-失败 40X-超时 | 200-成功 50X-失败 40X-超时 | 200-成功 50X-失败 40X-超时
+[/TABLE]
+## control_kinetic_simply(…args) -动力学控制信息接口（简单飞控，按目标点）
+[TABLE]
+接口名称 | 动力学控制信息接口（简单飞控，按目标点） | 动力学控制信息接口（简单飞控，按目标点） | 动力学控制信息接口（简单飞控，按目标点） | 动力学控制信息接口（简单飞控，按目标点）
+接口方法 | control_kinetic_simply(…args) | control_kinetic_simply(…args) | control_kinetic_simply(…args) | control_kinetic_simply(…args)
+接口说明 | 动力学控制飞机飞行，目前按照目标点设置 | 动力学控制飞机飞行，目前按照目标点设置 | 动力学控制飞机飞行，目前按照目标点设置 | 动力学控制飞机飞行，目前按照目标点设置
+类别 | 字段 | 字段名 | 数据类型 | 说明
+输入 | x | N，北向 |  | 
+输入 | y | E，东向 |  | 
+输入 | z | D，地心 |  | 
+输入 | v | GS，地速 |  | 
+输入 | frame_timestamp | 当前帧时间戳 |  | 
+输出 | code | 返回状态码 |  | 
+输出 | frame_timestamp | 返回帧时间戳 |  | 
+状态码 | 200-成功 50X-失败 40X-超时 | 200-成功 50X-失败 40X-超时 | 200-成功 50X-失败 40X-超时 | 200-成功 50X-失败 40X-超时
+[/TABLE]
+## control_vehicle(…args) -车辆控制油门设置接口
+[TABLE]
+接口名称 | 设置车辆油门数据接口 | 设置车辆油门数据接口 | 设置车辆油门数据接口 | 设置车辆油门数据接口
+接口方法 | control_vehicle (…args) | control_vehicle (…args) | control_vehicle (…args) | control_vehicle (…args)
+接口说明 | 设置当前车辆油门信息 | 设置当前车辆油门信息 | 设置当前车辆油门信息 | 设置当前车辆油门信息
+类别 | 字段 | 字段名 | 数据类型 | 说明
+输入 | throttle | 油门 |  | 
+输出 | frame_timestamp | 响应帧时间戳 |  | 
+输出 | code | 返回状态码 |  | 
+状态码 | 200-成功 50X-失败                                                                                                                                                                                                                                                                                                                                            40X-超时 | 200-成功 50X-失败                                                                                                                                                                                                                                                                                                                                            40X-超时 | 200-成功 50X-失败                                                                                                                                                                                                                                                                                                                                            40X-超时 | 200-成功 50X-失败                                                                                                                                                                                                                                                                                                                                            40X-超时
+[/TABLE]
+## set_vehicle_steer(…args) -车辆控制转向设置接口
+[TABLE]
+接口名称 | 设置车辆控制数据接口 | 设置车辆控制数据接口 | 设置车辆控制数据接口 | 设置车辆控制数据接口
+接口方法 | set_vehicle_steer(…args) | set_vehicle_steer(…args) | set_vehicle_steer(…args) | set_vehicle_steer(…args)
+接口说明 | 设置当前车辆转向信息 | 设置当前车辆转向信息 | 设置当前车辆转向信息 | 设置当前车辆转向信息
+类别 | 字段 | 字段名 | 数据类型 | 说明
+输入 | steer | 转向 |  | 
+输出 | frame_timestamp | 响应帧时间戳 |  | 
+输出 | code | 返回状态码 |  | 
+状态码 | 200-成功 50X-失败                                                                                                                                                                                                                                                                                                                                            40X-超时 | 200-成功 50X-失败                                                                                                                                                                                                                                                                                                                                            40X-超时 | 200-成功 50X-失败                                                                                                                                                                                                                                                                                                                                            40X-超时 | 200-成功 50X-失败                                                                                                                                                                                                                                                                                                                                            40X-超时
+[/TABLE]
+## set_vehicle_brake(…args) -车辆控制手刹设置接口
+[TABLE]
+接口名称 | 设置车辆控制手刹数据接口 | 设置车辆控制手刹数据接口 | 设置车辆控制手刹数据接口 | 设置车辆控制手刹数据接口
+接口方法 | set_vehicle_brake(…args) | set_vehicle_brake(…args) | set_vehicle_brake(…args) | set_vehicle_brake(…args)
+接口说明 | 设置当前车辆手刹信息 | 设置当前车辆手刹信息 | 设置当前车辆手刹信息 | 设置当前车辆手刹信息
+类别 | 字段 | 字段名 | 数据类型 | 说明
+输入 | brake | 手刹 |  | 
+输出 | frame_timestamp | 响应帧时间戳 |  | 
+输出 | code | 返回状态码 |  | 
+状态码 | 200-成功 50X-失败                                                                                                                                                                                                                                                                                                                                            40X-超时 | 200-成功 50X-失败                                                                                                                                                                                                                                                                                                                                            40X-超时 | 200-成功 50X-失败                                                                                                                                                                                                                                                                                                                                            40X-超时 | 200-成功 50X-失败                                                                                                                                                                                                                                                                                                                                            40X-超时
+[/TABLE]
+## set_vehicle_gear(…args) -车辆控制档位设置接口
+[TABLE]
+接口名称 | 设置车辆控制档位数据接口 | 设置车辆控制档位数据接口 | 设置车辆控制档位数据接口 | 设置车辆控制档位数据接口
+接口方法 | set_vehicle_gear(…args) | set_vehicle_gear(…args) | set_vehicle_gear(…args) | set_vehicle_gear(…args)
+接口说明 | 设置当前车辆档位信息 | 设置当前车辆档位信息 | 设置当前车辆档位信息 | 设置当前车辆档位信息
+类别 | 字段 | 字段名 | 数据类型 | 说明
+输入 | gear | 档位 |  | 
+输出 | frame_timestamp | 响应帧时间戳 |  | 
+输出 | code | 返回状态码 |  | 
+状态码 | 200-成功 50X-失败                                                                                                                                                                                                                                                                                                                                            40X-超时 | 200-成功 50X-失败                                                                                                                                                                                                                                                                                                                                            40X-超时 | 200-成功 50X-失败                                                                                                                                                                                                                                                                                                                                            40X-超时 | 200-成功 50X-失败                                                                                                                                                                                                                                                                                                                                            40X-超时
+[/TABLE]
+## apply_vehicle_control(…args) -控制车辆行为接口
+[TABLE]
+接口名称 | 控制车辆行为接口 | 控制车辆行为接口 | 控制车辆行为接口 | 控制车辆行为接口
+接口方法 | apply_control(…args) | apply_control(…args) | apply_control(…args) | apply_control(…args)
+接口说明 | 设置当前车辆油门、转向、刹车、手刹、档位信息 | 设置当前车辆油门、转向、刹车、手刹、档位信息 | 设置当前车辆油门、转向、刹车、手刹、档位信息 | 设置当前车辆油门、转向、刹车、手刹、档位信息
+类别 | 字段 | 字段名 | 数据类型 | 说明
+输入 | throttle | 油门 |  | 范围[-1.0,1.00]
+输入 | steer | 转向 |  | 范围[[-1.0,1.0]]
+输入 | brake | 刹车 |  | 范围[0.0,1.0]
+输入 | hand_brake | 手刹 |  | 范围[0.0,1.0]
+输入 | gear | 档位 |  | 无
+输出 | frame_timestamp | 响应帧时间戳 |  | 
+输出 | code | 返回状态码 |  | 
+状态码 | 200-成功 50X-失败                                                                                                                                                                                                                                                                                                                                            40X-超时 | 200-成功 50X-失败                                                                                                                                                                                                                                                                                                                                            40X-超时 | 200-成功 50X-失败                                                                                                                                                                                                                                                                                                                                            40X-超时 | 200-成功 50X-失败                                                                                                                                                                                                                                                                                                                                            40X-超时
+[/TABLE]
+## get_vehicle_status() -获取车辆状态数据接口
+[TABLE]
+接口名称 | 获取车辆状态数据接口 | 获取车辆状态数据接口 | 获取车辆状态数据接口 | 获取车辆状态数据接口
+接口方法 | get_vehicle_status() | get_vehicle_status() | get_vehicle_status() | get_vehicle_status()
+接口说明 | 获取当前车辆数据状态信息 | 获取当前车辆数据状态信息 | 获取当前车辆数据状态信息 | 获取当前车辆数据状态信息
+类别 | 字段 | 字段名 | 数据类型 | 说明
+输入 |  |  |  | 
+ | throttle | 油门 |  | 
+ | steer | 转向 |  | 
+ | gear | 档位 |  | 
+ | brake | 手刹 |  | 
+状态码 | 200-成功 50X-失败                                                                                                                                                                                                                                                                                                                                            40X-超时 | 200-成功 50X-失败                                                                                                                                                                                                                                                                                                                                            40X-超时 | 200-成功 50X-失败                                                                                                                                                                                                                                                                                                                                            40X-超时 | 200-成功 50X-失败                                                                                                                                                                                                                                                                                                                                            40X-超时
+[/TABLE]
+## send_msg() -载具发送消息接口
+[TABLE]
+接口名称 | 载具发送消息接口 | 载具发送消息接口 | 载具发送消息接口 | 载具发送消息接口
+接口方法 | send_msg() | send_msg() | send_msg() | send_msg()
+接口说明 | 当前载具向其它载具发送消息 | 当前载具向其它载具发送消息 | 当前载具向其它载具发送消息 | 当前载具向其它载具发送消息
+类别 | 字段 | 字段名 | 数据类型 | 说明
+输入 | msg | 消息 | bytes | 
+输出 |  |  |  | 
+[/TABLE]
+## receive_msg() -载具接收消息接口
+[TABLE]
+接口名称 | 获取接收消息接口 | 获取接收消息接口 | 获取接收消息接口 | 获取接收消息接口
+接口方法 | receive_msg() | receive_msg() | receive_msg() | receive_msg()
+接口说明 | 当前载具获取其它载具发出的消息 | 当前载具获取其它载具发出的消息 | 当前载具获取其它载具发出的消息 | 当前载具获取其它载具发出的消息
+类别 | 字段 | 字段名 | 数据类型 | 说明
+输入 |  |  |  | 
+输出 | flag | 是否接收成功 | bool | 
+输出 | msg | 消息 | Bytes | 
+[/TABLE]
+## missile_fire() -发射导弹接口
+[TABLE]
+接口名称 | 获取侦测到敌方载具接口 | 获取侦测到敌方载具接口 | 获取侦测到敌方载具接口 | 获取侦测到敌方载具接口
+接口方法 | missile_fire () | missile_fire () | missile_fire () | missile_fire ()
+接口说明 | 获取侦测到敌方载具，返回敌方载具列表 | 获取侦测到敌方载具，返回敌方载具列表 | 获取侦测到敌方载具，返回敌方载具列表 | 获取侦测到敌方载具，返回敌方载具列表
+类别 | 字段 | 字段名 | 数据类型 | 说明
+输入 | target_id | 打击目标的ID | int | -
+输出 | - | - | - | 
+[/TABLE]
+## set_emc_angle(…args) -电磁对抗干扰车干扰扇面角度设置接口
+[TABLE]
+接口名称 | 电磁对抗干扰车干扰扇面角度设置接口 | 电磁对抗干扰车干扰扇面角度设置接口 | 电磁对抗干扰车干扰扇面角度设置接口 | 电磁对抗干扰车干扰扇面角度设置接口
+接口方法 | set_emc_angle(…args) | set_emc_angle(…args) | set_emc_angle(…args) | set_emc_angle(…args)
+接口说明 | 设置电磁对抗干扰车的干扰扇面角度 | 设置电磁对抗干扰车的干扰扇面角度 | 设置电磁对抗干扰车的干扰扇面角度 | 设置电磁对抗干扰车的干扰扇面角度
+类别 | 字段 | 字段名 | 数据类型 | 说明
+输入 | angle | 角度 | float | 单位：°  坐标系：机体坐标系，车头方向为零度，顺时针为正，逆时针为负。干扰扇面角度为干扰扇面的中心线与车头之间的夹角
+输出 | frame_timestamp | 响应帧时间戳 |  | 
+输出 | code | 返回状态码 |  | 
+状态码 | 200-成功 50X-失败 40X-超时 | 200-成功 50X-失败 40X-超时 | 200-成功 50X-失败 40X-超时 | 200-成功 50X-失败 40X-超时
+[/TABLE]
+## control_emc(…args) -控制电磁对抗开关接口
+[TABLE]
+接口名称 | 控制电磁对抗开关 | 控制电磁对抗开关 | 控制电磁对抗开关 | 控制电磁对抗开关
+接口方法 | control_emc(…args) | control_emc(…args) | control_emc(…args) | control_emc(…args)
+接口说明 | 控制电磁对抗车电磁对抗的开/关 | 控制电磁对抗车电磁对抗的开/关 | 控制电磁对抗车电磁对抗的开/关 | 控制电磁对抗车电磁对抗的开/关
+类别 | 字段 | 字段名 | 数据类型 | 说明
+输入 | status | 释放/关闭电磁干扰 | bool | 开：True 关：False
+输出 | frame_timestamp | 响应帧时间戳 |  | 
+输出 | code | 返回状态码 |  | 
+状态码 | 200-成功 50X-失败 40X-超时 | 200-成功 50X-失败 40X-超时 | 200-成功 50X-失败 40X-超时 | 200-成功 50X-失败 40X-超时
+[/TABLE]
+## detect_situation()-探测接口
+[TABLE]
+接口名称 | 探测物体接口 | 探测物体接口 | 探测物体接口 | 探测物体接口
+接口方法 | detect_situation() | detect_situation() | detect_situation() | detect_situation()
+接口说明 | 返回探测半径内的Actor信息，JSON格式 | 返回探测半径内的Actor信息，JSON格式 | 返回探测半径内的Actor信息，JSON格式 | 返回探测半径内的Actor信息，JSON格式
+类别 | 字段 | 字段名 | 数据类型 | 说明
+输出 | res | 探测半径内的Actor信息 | JSON | res 中提供的字段中 ,Type表示类型（ strike,可打击；teammate：己方车辆，obstacles:”不可打击障碍物，用于局部路径规划”）Type_Name字段代表Actor的类型信息： 打击目标如下： Barricade 随机生成目标，可打击 Stryker 敌方载具目标 可打击 Pillbox  简易工事目标，可打击 Building  有人员建筑目标，可打击 Soldier  建筑外人员目标，可打击  不可打击目标，己方目标如下：  RaiderBuggy 侦查打击车，不可打击 MineDestruction 扫雷车，不可打击 ElectronCar 电磁车，不可打击 HRT-M10多旋翼无人机，不可打击  局部路径规划中的障碍： StaticMeshActor（障碍）
+输出 | code | 状态码 | int | 
+输出 | frame_timestamp | 响应帧时间戳 |  | 
+状态码 | 200-成功 50X-失败 40X-超时 | 200-成功 50X-失败 40X-超时 | 200-成功 50X-失败 40X-超时 | 200-成功 50X-失败 40X-超时
+[/TABLE]
+## SwarmAEWorld类声明
+[TABLE]
+类名 | SwarmAEWorld | SwarmAEWorld | SwarmAEWorld
+类说明 | 世界实例类，提供获取世界环境的相关信息接口 | 世界实例类，提供获取世界环境的相关信息接口 | 世界实例类，提供获取世界环境的相关信息接口
+类别 | 定义 | 返回值 | 含义
+变量 | world |  | 世界
+方法 | get_map(filter) | Name、type等值 | 获取地图信息
+方法 | get_light() | SunAltitude等值 | 获取光照
+方法 | get_weather() | Cloud、Precipitation、Wind_Speed等值 | 获取天气
+方法 | get_zone(node_id) | zone_loc等值 | 获取节点周围区域
+方法 | get_interference(node_isd) | Interference_Type值 | 获取节点周围干扰信息
+[/TABLE]
+## get_map(map_filter) -获取地图信息接口
+[TABLE]
+接口名称 | 获取地图信息接口 | 获取地图信息接口 | 获取地图信息接口 | 获取地图信息接口
+接口方法 | get_map(map_filter) | get_map(map_filter) | get_map(map_filter) | get_map(map_filter)
+接口说明 | 获取环境的基本地图信息 | 获取环境的基本地图信息 | 获取环境的基本地图信息 | 获取环境的基本地图信息
+类别 | 字段 | 字段名 | 数据类型 | 说明
+输入 | map_filter | 过滤条件 |  | 可选。高精、栅格等
+输出 | hd_map | 高精地图 |  | 
+输出 | grid_map | 栅格地图 |  | 
+输出 | map_name | 地图名称 |  | 
+输出 | frame_timestamp | 当前帧时间戳 |  | 
+状态码 | 200-成功 50X-失败 40X-超时 | 200-成功 50X-失败 40X-超时 | 200-成功 50X-失败 40X-超时 | 200-成功 50X-失败 40X-超时
+[/TABLE]
+## get_light() -获取光照信息接口
+[TABLE]
+接口名称 | 获取光照信息接口 | 获取光照信息接口 | 获取光照信息接口 | 获取光照信息接口
+接口方法 | get_light() | get_light() | get_light() | get_light()
+接口说明 | 获取环境的光照信息 | 获取环境的光照信息 | 获取环境的光照信息 | 获取环境的光照信息
+类别 | 字段 | 字段名 | 数据类型 | 说明
+输入 |  |  |  | 
+输出 | sun_altitude | 太阳高度角 |  | 
+输出 | sun_azimuth | 太阳方位角 |  | 
+输出 | frame_timestamp | 当前帧时间戳 |  | 
+状态码 | 200-成功 50X-失败 40X-超时 | 200-成功 50X-失败 40X-超时 | 200-成功 50X-失败 40X-超时 | 200-成功 50X-失败 40X-超时
+[/TABLE]
+## get_weather() -获取天气信息接口
+[TABLE]
+接口名称 | 获取天气信息接口 | 获取天气信息接口 | 获取天气信息接口 | 获取天气信息接口
+接口方法 | get_weather() | get_weather() | get_weather() | get_weather()
+接口说明 | 获取环境的云水风等天气信息 | 获取环境的云水风等天气信息 | 获取环境的云水风等天气信息 | 获取环境的云水风等天气信息
+类别 | 字段 | 字段名 | 数据类型 | 说明
+输入 | weather_filter | 过滤条件 |  | 可选。风雨雾风等
+输出 | cloud | 云量 |  | 
+输出 | precipitation | 降水量 |  | 
+输出 | wind_strong | 风强 |  | 
+输出 | fog_Intensity | 雾霾强度 |  | 
+输出 | humidity | 湿度 |  | 
+输出 | frame_timestamp | 当前帧时间戳 |  | 
+状态码 | 200-成功 50X-失败 40X-超时 | 200-成功 50X-失败 40X-超时 | 200-成功 50X-失败 40X-超时 | 200-成功 50X-失败 40X-超时
+[/TABLE]
+## get_zone(node_id) -获取周围区域信息接口
+[TABLE]
+接口名称 | 获取周围区域信息接口 | 获取周围区域信息接口 | 获取周围区域信息接口 | 获取周围区域信息接口
+接口方法 | get_zone(node_id) | get_zone(node_id) | get_zone(node_id) | get_zone(node_id)
+接口说明 | 根据节点ID获取附近区域，包括风场/林场/隔离带等 | 根据节点ID获取附近区域，包括风场/林场/隔离带等 | 根据节点ID获取附近区域，包括风场/林场/隔离带等 | 根据节点ID获取附近区域，包括风场/林场/隔离带等
+类别 | 字段 | 字段名 | 数据类型 | 说明
+输入 | node_id | 节点id | Num | 唯一id
+输出 | zone_type | 区域类型 |  | 风场/林场/隔离带
+输出 | zone_loc | 区域中心位置 |  | 
+输出 | zone_size | 区域大小 |  | 
+输出 | zone_shape | 区域形状 |  | 
+输出 | points | 定点位置 |  | 
+输出 | radius | 半径 |  | 
+输出 | frame_timestamp | 当前帧时间戳 |  | 
+状态码 | 200-成功 50X-失败 40X-超时 | 200-成功 50X-失败 40X-超时 | 200-成功 50X-失败 40X-超时 | 200-成功 50X-失败 40X-超时
+[/TABLE]
+## get_interference(node_id) -获取干扰数据信息接口
+[TABLE]
+接口名称 | 获取干扰数据信息接口 | 获取干扰数据信息接口 | 获取干扰数据信息接口 | 获取干扰数据信息接口
+接口方法 | get_interference(node_id) | get_interference(node_id) | get_interference(node_id) | get_interference(node_id)
+接口说明 | 根据节点获取附近干扰区域信息 | 根据节点获取附近干扰区域信息 | 根据节点获取附近干扰区域信息 | 根据节点获取附近干扰区域信息
+类别 | 字段 | 字段名 | 数据类型 | 说明
+输入 | node_id | 节点id | Num | 唯一id
+输出 | Interference_Type | 干扰类型 |  | 
+输出 | Interference_Loc | 干扰源位置 |  | 
+输出 | Interference_Range | 干扰范围 |  | 
+输出 | Interference_Str | 干扰强度 |  | 
+输出 | Interference_Time | 干扰时间 |  | 
+输出 | frame_timestamp | 当前帧时间戳 |  | 
+状态码 | 200-成功 50X-失败 40X-超时 | 200-成功 50X-失败 40X-超时 | 200-成功 50X-失败 40X-超时 | 200-成功 50X-失败 40X-超时
+[/TABLE]
+## SwarmAEWeapon类声明
+[TABLE]
+类名 | SwarmAEWeapon | SwarmAEWeapon | SwarmAEWeapon
+类说明 | 火力载荷实例类，继承SwarmAEActor类。提供获取和设置火力载荷的相关信息接口 | 火力载荷实例类，继承SwarmAEActor类。提供获取和设置火力载荷的相关信息接口 | 火力载荷实例类，继承SwarmAEActor类。提供获取和设置火力载荷的相关信息接口
+类别 | 定义 | 返回值 | 含义
+变量 |  |  | 
+方法 | get_weapon_config() | Load_name等值 | 获取载荷配置信息
+方法 | get_weapon_angle() | Angle值 | 获取火力载荷角度
+方法 | get_weapon_fire() | is_fire等值 | 获取火力载荷开火
+方法 | get_weapon_ammo() | Ammo值 | 获取火力载荷弹药
+方法 | get_weapon_energy() | Energy值 | 获取火力载荷能源
+方法 | set_weapon_angle(…args) |  | 设置火力载荷角度
+方法 | set_weapon_status(…args) |  | 设置火力载荷状态
+方法 | set_weapon_ammo(…args) |  | 设置火力载荷弹药
+方法 | set_weapon_energy(…args) |  | 设置火力载荷能源
+[/TABLE]
+## get_weapon_config() -获取载荷配置信息接口（预留接口）
+[TABLE]
+接口名称 | 获取载荷配置信息接口（预留接口） | 获取载荷配置信息接口（预留接口） | 获取载荷配置信息接口（预留接口） | 获取载荷配置信息接口（预留接口）
+接口方法 | get_weapon_config() | get_weapon_config() | get_weapon_config() | get_weapon_config()
+接口说明 | 获取当前节点的载荷配置信息，包括打击载荷、传感器等对应载荷的类型、模型等信息 | 获取当前节点的载荷配置信息，包括打击载荷、传感器等对应载荷的类型、模型等信息 | 获取当前节点的载荷配置信息，包括打击载荷、传感器等对应载荷的类型、模型等信息 | 获取当前节点的载荷配置信息，包括打击载荷、传感器等对应载荷的类型、模型等信息
+类别 | 字段 | 字段名 | 数据类型 | 说明
+输入 |  |  |  | 
+输出 |  |  |  | 
+输出 |  |  |  | 
+输出 |  |  |  | 
+输出 |  |  |  | 
+输出 |  |  |  | 
+输出 |  |  |  | 
+输出 |  |  |  | 
+输出 |  |  |  | 
+输出 |  |  |  | 
+输出 |  |  |  | 
+状态码 |  |  |  | 
+[/TABLE]
+## get_weapon_angle() -获取火力载荷角度接口
+[TABLE]
+接口名称 | 获取火力载荷角度接口 | 获取火力载荷角度接口 | 获取火力载荷角度接口 | 获取火力载荷角度接口
+接口方法 | get_weapon_angle() | get_weapon_angle() | get_weapon_angle() | get_weapon_angle()
+接口说明 | 获取火力载荷的角度信息 | 获取火力载荷的角度信息 | 获取火力载荷的角度信息 | 获取火力载荷的角度信息
+类别 | 字段 | 字段名 | 数据类型 | 说明
+输入 |  |  |  | 
+输出 | angle | 取当前载具开火角度 | FireAngle | yaw: yaw是围绕Y轴旋转，也叫偏航角 pitch: pitch是围绕X轴旋转，也叫做俯仰角
+输出 | frame_timestamp | 当前帧时间戳 |  | 
+状态码 | 200-成功 50X-失败 40X-超时 | 200-成功 50X-失败 40X-超时 | 200-成功 50X-失败 40X-超时 | 200-成功 50X-失败 40X-超时
+[/TABLE]
+## get_weapon_fire() -获取火力载荷开火接口
+[TABLE]
+接口名称 | 获取火力载荷开火接口 | 获取火力载荷开火接口 | 获取火力载荷开火接口 | 获取火力载荷开火接口
+接口方法 | get_weapon_fire() | get_weapon_fire() | get_weapon_fire() | get_weapon_fire()
+接口说明 | 获取火力载荷的开火信息 | 获取火力载荷的开火信息 | 获取火力载荷的开火信息 | 获取火力载荷的开火信息
+类别 | 字段 | 字段名 | 数据类型 | 说明
+输入 |  |  |  | 
+输出 | is_fire | 是否开火 | boolean | False:代表未开火 True:代表已开火
+输出 | frame_timestamp | 当前帧时间戳 |  | 
+状态码 | 200-成功 50X-失败 40X-超时 | 200-成功 50X-失败 40X-超时 | 200-成功 50X-失败 40X-超时 | 200-成功 50X-失败 40X-超时
+[/TABLE]
+## get_weapon_ammo() -获取火力载荷弹药接口
+[TABLE]
+接口名称 | 获取火力载荷弹药接口 | 获取火力载荷弹药接口 | 获取火力载荷弹药接口 | 获取火力载荷弹药接口
+接口方法 | get_weapon_ammo() | get_weapon_ammo() | get_weapon_ammo() | get_weapon_ammo()
+接口说明 | 获取火力载荷的弹药信息 | 获取火力载荷的弹药信息 | 获取火力载荷的弹药信息 | 获取火力载荷的弹药信息
+类别 | 字段 | 字段名 | 数据类型 | 说明
+输入 |  |  |  | 
+ | is_available | 是否可用 |  | 
+ | ammo_count | 剩余弹药数 |  | 
+ | frame_timestamp | 当前帧时间戳 |  | 
+状态码 | 200-成功 50X-失败 40X-超时 | 200-成功 50X-失败 40X-超时 | 200-成功 50X-失败 40X-超时 | 200-成功 50X-失败 40X-超时
+[/TABLE]
+## get_weapon_energy() -获取火力载荷能源接口
+[TABLE]
+接口名称 | 获取火力载荷能源接口 | 获取火力载荷能源接口 | 获取火力载荷能源接口 | 获取火力载荷能源接口
+接口方法 | get_weapon_energy() | get_weapon_energy() | get_weapon_energy() | get_weapon_energy()
+接口说明 | 获取火力载荷的能源信息 | 获取火力载荷的能源信息 | 获取火力载荷的能源信息 | 获取火力载荷的能源信息
+类别 | 字段 | 字段名 | 数据类型 | 说明
+输入 |  |  |  | 
+ | energy | 当前能源值 |  | 
+ | frame_timestamp | 当前帧时间戳 |  | 
+状态码 | 200-成功 50X-失败 40X-超时 | 200-成功 50X-失败 40X-超时 | 200-成功 50X-失败 40X-超时 | 200-成功 50X-失败 40X-超时
+[/TABLE]
+## set_weapon_angle(…args) -设置火力载荷角度接口
+[TABLE]
+接口名称 | 设置火力载荷角度接口 | 设置火力载荷角度接口 | 设置火力载荷角度接口 | 设置火力载荷角度接口
+接口方法 | set_weapon_angle(…args) | set_weapon_angle(…args) | set_weapon_angle(…args) | set_weapon_angle(…args)
+接口说明 | 设置指定火力载荷的角度信息 | 设置指定火力载荷的角度信息 | 设置指定火力载荷的角度信息 | 设置指定火力载荷的角度信息
+类别 | 字段 | 字段名 | 数据类型 | 说明
+输入 | barrel_angle | 炮筒角度 |  | 
+输入 | barrel_Altitude | 炮筒高度角 |  | 
+输入 | frame_timestamp | 当前帧时间戳 |  | 
+输出 | frame_timestamp | 响应帧时间戳 |  | 
+输出 | code | 返回状态码 |  | 
+状态码 | 200-成功 50X-失败 40X-超时 | 200-成功 50X-失败 40X-超时 | 200-成功 50X-失败 40X-超时 | 200-成功 50X-失败 40X-超时
+[/TABLE]
+## set_weapon_status(…args) -设置火力载荷开火接口
+[TABLE]
+接口名称 | 设置火力载荷状态接口 | 设置火力载荷状态接口 | 设置火力载荷状态接口 | 设置火力载荷状态接口
+接口方法 | set_weapon_status(…args) | set_weapon_status(…args) | set_weapon_status(…args) | set_weapon_status(…args)
+接口说明 | 设置载荷的开火 | 设置载荷的开火 | 设置载荷的开火 | 设置载荷的开火
+类别 | 字段 | 字段名 | 数据类型 | 说明
+输入 | x | 打击目标坐标-x | float | 单位cm
+输入 | y | 打击目标坐标-y | float | 单位cm
+输入 | z | 打击目标坐标-z | float | 单位cm
+输入 | ammo_type | 弹药类型 | int | 弹药类型 0-子弹（95发） 1-40炮（15发） 2-反坦克炮（2发）打空之后就失效了
+输入 | ammo_number | 弹药数量 | int | 
+输出 | frame_timestamp | 响应帧时间戳 |  | 
+输出 | code | 返回状态码 |  | 
+状态码 | 200-成功 50X-失败 40X-超时 | 200-成功 50X-失败 40X-超时 | 200-成功 50X-失败 40X-超时 | 200-成功 50X-失败 40X-超时
+[/TABLE]
+## set_weapon_ammo(…args) -火力载荷补充弹药接口（预留）
+[TABLE]
+接口名称 | 设置火力载荷弹药接口（预留） | 设置火力载荷弹药接口（预留） | 设置火力载荷弹药接口（预留） | 设置火力载荷弹药接口（预留）
+接口方法 | set_weapon_ammo(…args) | set_weapon_ammo(…args) | set_weapon_ammo(…args) | set_weapon_ammo(…args)
+接口说明 | 设置载荷的上弹 | 设置载荷的上弹 | 设置载荷的上弹 | 设置载荷的上弹
+类别 | 字段 | 字段名 | 数据类型 | 说明
+输入 |  |  |  | 
+输入 |  |  |  | 
+输出 |  |  |  | 
+输出 |  |  |  | 
+状态码 | 200-成功 50X-失败 40X-超时 | 200-成功 50X-失败 40X-超时 | 200-成功 50X-失败 40X-超时 | 200-成功 50X-失败 40X-超时
+[/TABLE]
+## set_weapon_energy(…args) -火力载荷补充能源接口（预留）
+[TABLE]
+接口名称 | 设置火力载荷能源接口（预留） | 设置火力载荷能源接口（预留） | 设置火力载荷能源接口（预留） | 设置火力载荷能源接口（预留）
+接口方法 | set_weapon_energy(…args) | set_weapon_energy(…args) | set_weapon_energy(…args) | set_weapon_energy(…args)
+接口说明 | 设置载荷的补充能源信息 | 设置载荷的补充能源信息 | 设置载荷的补充能源信息 | 设置载荷的补充能源信息
+类别 | 字段 | 字段名 | 数据类型 | 说明
+输入 |  |  |  | 
+输入 |  |  |  | 
+输出 |  |  |  | 
+输出 | code |  |  | 
+状态码 | 200-成功 50X-失败 40X-超时 | 200-成功 50X-失败 40X-超时 | 200-成功 50X-失败 40X-超时 | 200-成功 50X-失败 40X-超时
+[/TABLE]
+## SwarmAEConnect类声明
+[TABLE]
+类名 | SwarmAEConnect | SwarmAEConnect | SwarmAEConnect
+类说明 | 通讯连接实例类，提供通讯的相关信息接口 | 通讯连接实例类，提供通讯的相关信息接口 | 通讯连接实例类，提供通讯的相关信息接口
+类别 | 定义 | 返回值 | 含义
+变量 |  |  | 
+方法 | create_channel(…args，type) |  | 建立节点通讯
+方法 | release_channel(…args) |  | 释放节点通讯
+[/TABLE]
+## create_channel(…args) -建立节点通讯连接接口
+[TABLE]
+接口名称 | 建立节点通讯连接接口 | 建立节点通讯连接接口 | 建立节点通讯连接接口 | 建立节点通讯连接接口
+接口方法 | create_channel(…args) | create_channel(…args) | create_channel(…args) | create_channel(…args)
+接口说明 | 建立节点通讯通道 | 建立节点通讯通道 | 建立节点通讯通道 | 建立节点通讯通道
+类别 | 字段 | 字段名 | 数据类型 | 说明
+输入 | node_ids | 节点ids | Num | 唯一id数组
+输入 | chann_type | 通道类型 | Str | 
+输出 | SwarmAEChannel/ SwarmAEBroadcast | 通道 | SwarmAEChannel类 或 SwarmAEBroadcast类 | 
+输出 | code | 成功状态码 |  | 
+输出 | frame_timestamp | 当前帧时间戳 |  | 
+状态码 | 200-成功 50X-失败 40X-超时 | 200-成功 50X-失败 40X-超时 | 200-成功 50X-失败 40X-超时 | 200-成功 50X-失败 40X-超时
+[/TABLE]
+## release_channel(…args) -回收节点通讯通道接口
+[TABLE]
+接口名称 | 回收节点通讯通道接口 | 回收节点通讯通道接口 | 回收节点通讯通道接口 | 回收节点通讯通道接口
+接口方法 | release_channel(…args) | release_channel(…args) | release_channel(…args) | release_channel(…args)
+接口说明 | 回收节点通讯通道 | 回收节点通讯通道 | 回收节点通讯通道 | 回收节点通讯通道
+类别 | 字段 | 字段名 | 数据类型 | 说明
+输入 | swarmae_channel | 通道 | SwarmAEChannel类 或 SwarmAEBroadcast类 | 
+输出 | frame_timestamp | 当前帧时间戳 |  | 
+输出 | code | 状态码 |  | 
+状态码 | 200-成功 50X-失败 40X-超时 | 200-成功 50X-失败 40X-超时 | 200-成功 50X-失败 40X-超时 | 200-成功 50X-失败 40X-超时
+[/TABLE]
+## SwarmAEBroadcast类声明
+[TABLE]
+类名 | SwarmAEBroad | SwarmAEBroad | SwarmAEBroad
+类说明 | 通讯连接实例类，提供通讯的相关信息接口 | 通讯连接实例类，提供通讯的相关信息接口 | 通讯连接实例类，提供通讯的相关信息接口
+类别 | 定义 | 返回值 | 含义
+变量 |  |  | 
+方法 | send_message (…args) |  | 建立节点通讯
+方法 | Receive_message (…args) |  | 释放节点通讯
+[/TABLE]
+## send_message (…args) -发送广播数据
+[TABLE]
+接口名称 | 建立节点通讯连接接口 | 建立节点通讯连接接口 | 建立节点通讯连接接口 | 建立节点通讯连接接口
+接口方法 | send_message(…args) | send_message(…args) | send_message(…args) | send_message(…args)
+接口说明 | 建立节点通讯通道 | 建立节点通讯通道 | 建立节点通讯通道 | 建立节点通讯通道
+类别 | 字段 | 字段名 | 数据类型 | 说明
+输入 | msg_data | 数据 | bytes | 要发送的数据
+输入 | Frame_timestamp | 时戳 | int | 当前时间戳
+输出 | code | 成功状态码 |  | 
+输出 | frame_timestamp | 当前帧时间戳 |  | 
+状态码 | 200-成功 50X-失败 40X-超时 | 200-成功 50X-失败 40X-超时 | 200-成功 50X-失败 40X-超时 | 200-成功 50X-失败 40X-超时
+[/TABLE]
+## receive_message (…args) -接收广播数据
+[TABLE]
+接口名称 | 回收节点通讯通道接口 | 回收节点通讯通道接口 | 回收节点通讯通道接口 | 回收节点通讯通道接口
+接口方法 | receive_message(…args) | receive_message(…args) | receive_message(…args) | receive_message(…args)
+接口说明 | 回收节点通讯通道 | 回收节点通讯通道 | 回收节点通讯通道 | 回收节点通讯通道
+类别 | 字段 | 字段名 | 数据类型 | 说明
+输入 | frame_timestamp | 时戳 | int | 当前时间戳
+输出 | code | 成功状态码 | int | 
+输出 | msg_data | 数据信息 | bytes | 字节流
+输出 | frame_timestamp | 返回帧时间戳 | int | 
+状态码 | 200-成功 50X-失败 40X-超时 | 200-成功 50X-失败 40X-超时 | 200-成功 50X-失败 40X-超时 | 200-成功 50X-失败 40X-超时
+[/TABLE]
+## SwarmAEChannel类声明
+[TABLE]
+类名 | SwarmAEChannel | SwarmAEChannel | SwarmAEChannel
+类说明 | 通讯通道实例类，提供通讯的相关信息接口 | 通讯通道实例类，提供通讯的相关信息接口 | 通讯通道实例类，提供通讯的相关信息接口
+类别 | 定义 | 返回值 | 含义
+变量 | topic |  | 会话主题
+变量 | channel_name |  | 通道名称
+变量 | is_keepalived |  | 是否心跳监测
+变量 | lifetime |  | 生命周期时长
+变量 | is_available |  | 是否可用
+方法 | get_channel_nodes(…args) |  | 获取通讯节点
+方法 | send_message(…args) |  | 发送消息
+方法 | receive_message(…args) |  | 获取消息
+[/TABLE]
+## get_channel_nodes(…args) -获取通讯节点接口
+[TABLE]
+接口名称 | 获取通讯节点接口 | 获取通讯节点接口 | 获取通讯节点接口 | 获取通讯节点接口
+接口方法 | get_channel_nodes(…args) | get_channel_nodes(…args) | get_channel_nodes(…args) | get_channel_nodes(…args)
+接口说明 | 根据节点ID获取可通讯的节点信息 | 根据节点ID获取可通讯的节点信息 | 根据节点ID获取可通讯的节点信息 | 根据节点ID获取可通讯的节点信息
+类别 | 字段 | 字段名 | 数据类型 | 说明
+输入 | node_id | 节点id | Num | 唯一id
+输出 | node_ids | 可通讯节点ids |  | 唯一id数组
+输出 | count | 可通讯节点总数 |  | 
+输出 | channel_name | 通道名称 |  | 
+输出 | topic | 会话主题 |  | 
+输出 | code | 成功状态码 |  | 
+输出 | frame_timestamp | 当前帧时间戳 |  | 
+输出 | remain_Lifetime | 剩余生命周期时长 |  | 
+输出 | is_available | 是否可用 |  | 
+状态码 | 200-成功 50X-失败 40X-超时 | 200-成功 50X-失败 40X-超时 | 200-成功 50X-失败 40X-超时 | 200-成功 50X-失败 40X-超时
+[/TABLE]
+## send_message(…args) -发送协同信息接口
+[TABLE]
+接口名称 | 发送协同信息接口 | 发送协同信息接口 | 发送协同信息接口 | 发送协同信息接口
+接口方法 | send_message(…args) | send_message(…args) | send_message(…args) | send_message(…args)
+接口说明 | 发送消息接口 | 发送消息接口 | 发送消息接口 | 发送消息接口
+类别 | 字段 | 字段名 | 数据类型 | 说明
+输入 | node_id | 发送方节点id | Num | 唯一id
+输入 | msg_data | 数据信息 |  | 字节流（ros或prototbuff）
+输入 | frame_timestamp | 当前帧时间戳 |  | 
+输入 | topic | 会话主题 |  | 
+输出 | code | 成功状态码 |  | 
+输出 | frame_timestamp | 返回帧时间戳 |  | 
+状态码 | 200-成功 50X-失败 40X-超时 | 200-成功 50X-失败 40X-超时 | 200-成功 50X-失败 40X-超时 | 200-成功 50X-失败 40X-超时
+[/TABLE]
+## receive_message(…args) -获取协同信息接口
+[TABLE]
+接口名称 | 获取协同信息接口 | 获取协同信息接口 | 获取协同信息接口 | 获取协同信息接口
+接口方法 | receive_message(…args) | receive_message(…args) | receive_message(…args) | receive_message(…args)
+接口说明 | 获取消息接口 | 获取消息接口 | 获取消息接口 | 获取消息接口
+类别 | 字段 | 字段名 | 数据类型 | 说明
+输入 | node_id | 发送方节点id | Num | 唯一id
+输入 | frame_timestamp | 当前帧时间戳 |  | 
+输入 | topic | 会话主题 |  | 
+输出 | code | 成功状态码 |  | 
+输出 | msg_data | 数据信息 |  | 字节流（ros或prototbuff）
+输出 | frame_timestamp | 返回帧时间戳 |  | 
+状态码 | 200-成功 50X-失败 40X-超时 | 200-成功 50X-失败 40X-超时 | 200-成功 50X-失败 40X-超时 | 200-成功 50X-失败 40X-超时
+[/TABLE]
+## SwarmAEGame类声明
+[TABLE]
+类名 | SwarmAEGame | SwarmAEGame | SwarmAEGame
+类说明 | game客户端，提供game相关功能 | game客户端，提供game相关功能 | game客户端，提供game相关功能
+类别 | 定义 | 返回值 | 含义
+变量 | game |  | game
+方法 | get_task_info | task等值 | 获取任务信息
+ | get_road_network | img、scale、world_offset等值 | 获取路网信息
+ | submit_plane_route |  | 提交侦查航线
+ | get_key_points | key_points等值 | 获取巡逻关键点
+ | stage_complete |  | 阶段完成
+[/TABLE]
+## get_task_info() -获取任务相关信息接口
+[TABLE]
+接口名称 | 获取任务相关信息接口 | 获取任务相关信息接口 | 获取任务相关信息接口 | 获取任务相关信息接口
+接口方法 | get_task_info() | get_task_info() | get_task_info() | get_task_info()
+接口说明 | 获取任务相关信息接口 | 获取任务相关信息接口 | 获取任务相关信息接口 | 获取任务相关信息接口
+类别 | 字段 | 字段名 | 数据类型 | 说明
+输入 | - | - | - | 
+输出 | info | 任务信息 | JSON | 具体示例详见附录四
+输出 | frame_timestamp | 返回帧时间戳 |  | 
+输出 | code | 状态码 | int | 
+状态码 | 200-成功 50X-失败 40X-超时 | 200-成功 50X-失败 40X-超时 | 200-成功 50X-失败 40X-超时 | 200-成功 50X-失败 40X-超时
+[/TABLE]
+## get_road_network() -获取路网信息接口
+[TABLE]
+接口名称 | 获取路网信息接口 | 获取路网信息接口 | 获取路网信息接口 | 获取路网信息接口
+接口方法 | get_road_network() | get_road_network() | get_road_network() | get_road_network()
+接口说明 | 获取路网信息 | 获取路网信息 | 获取路网信息 | 获取路网信息
+类别 | 字段 | 字段名 | 数据类型 | 说明
+输入 | - | - | - | 
+输出 | img | 路网图片 | PIL.Image | 
+输出 | scale | 比例尺 | int | 默认为1
+输出 | world_offset | 偏移量 | (x,y) | 像素点坐标与UE坐标的转换见附五
+输出 | frame_timestamp | 返回帧时间戳 |  | 
+输出 | code | 状态码 | int | 
+状态码 | 200-成功 50X-失败 40X-超时 | 200-成功 50X-失败 40X-超时 | 200-成功 50X-失败 40X-超时 | 200-成功 50X-失败 40X-超时
+[/TABLE]
+## submit_plane_route(…args) -提交侦查规划航线接口
+[TABLE]
+接口名称 | 提交侦查规划航线接口 | 提交侦查规划航线接口 | 提交侦查规划航线接口 | 提交侦查规划航线接口
+接口方法 | submit_plane_route(…args) | submit_plane_route(…args) | submit_plane_route(…args) | submit_plane_route(…args)
+接口说明 | 阶段1提交无人机的规划路线 一次性提交所有飞机的航线点（总航线点需少于1千万），多次提交会覆盖之前的航线点 | 阶段1提交无人机的规划路线 一次性提交所有飞机的航线点（总航线点需少于1千万），多次提交会覆盖之前的航线点 | 阶段1提交无人机的规划路线 一次性提交所有飞机的航线点（总航线点需少于1千万），多次提交会覆盖之前的航线点 | 阶段1提交无人机的规划路线 一次性提交所有飞机的航线点（总航线点需少于1千万），多次提交会覆盖之前的航线点
+类别 | 字段 | 字段名 | 数据类型 | 说明
+输入 | routes | 航线点 | [{"node_id":"1", "route":[{"x":"100","y":"100.5","z":"200.5"}....] },...] | 
+ | code | 成功状态码 |  | 
+ | frame_timestamp | 当前帧时间戳 |  | 
+状态码 | 200-成功 50X-失败 40X-超时 | 200-成功 50X-失败 40X-超时 | 200-成功 50X-失败 40X-超时 | 200-成功 50X-失败 40X-超时
+[/TABLE]
+## get_key_points() -获取巡逻关键点
+[TABLE]
+接口名称 | 获取巡逻关键点 | 获取巡逻关键点 | 获取巡逻关键点 | 获取巡逻关键点
+接口方法 | get_key_points() | get_key_points() | get_key_points() | get_key_points()
+接口说明 | 查询自主巡逻时的巡逻关键点 | 查询自主巡逻时的巡逻关键点 | 查询自主巡逻时的巡逻关键点 | 查询自主巡逻时的巡逻关键点
+类别 | 字段 | 字段名 | 数据类型 | 说明
+输入 | - | - | - | 
+输出 | key_points | 关键点 | [{"x":-524.42,"y":325.98,"z":10.52}, {"x":,"y":,"z":}, ...] | 
+输出 | frame_timestamp | 返回帧时间戳 |  | 
+输出 | code | 状态码 | int | 
+状态码 | 200-成功 50X-失败 40X-超时 | 200-成功 50X-失败 40X-超时 | 200-成功 50X-失败 40X-超时 | 200-成功 50X-失败 40X-超时
+[/TABLE]
+## stage_start(…args) -阶段开始接口
+[TABLE]
+接口名称 | 阶段开始接口 | 阶段开始接口 | 阶段开始接口 | 阶段开始接口
+接口方法 | stage_start (…args) | stage_start (…args) | stage_start (…args) | stage_start (…args)
+接口说明 | 每个阶段开始时发送指令 | 每个阶段开始时发送指令 | 每个阶段开始时发送指令 | 每个阶段开始时发送指令
+类别 | 字段 | 字段名 | 数据类型 | 说明
+输入 | stage | 阶段 | string | 1-开始侦察指令  reconnaissance_start 2-开始无人机先遣侦察指令 vau_reconnaissance_start 3、开始局部路径规划 plan_start 4-开始扫雷指令 minesweeper_start 5-开始电磁干扰 emi_start 6-开始侦打指令 hit_start 7-开始巡逻指令 patrol_start
+ | code | 成功状态码 |  | 
+ | frame_timestamp | 当前帧时间戳 |  | 
+状态码 | 200-成功 50X-失败 40X-超时 | 200-成功 50X-失败 40X-超时 | 200-成功 50X-失败 40X-超时 | 200-成功 50X-失败 40X-超时
+[/TABLE]
+## stage_complete(…args) -阶段完成接口
+[TABLE]
+接口名称 | 阶段完成接口 | 阶段完成接口 | 阶段完成接口 | 阶段完成接口
+接口方法 | stage_complete(…args) | stage_complete(…args) | stage_complete(…args) | stage_complete(…args)
+接口说明 | 每个阶段完成后发送完成指令 | 每个阶段完成后发送完成指令 | 每个阶段完成后发送完成指令 | 每个阶段完成后发送完成指令
+类别 | 字段 | 字段名 | 数据类型 | 说明
+输入 | stage | 阶段 | string | 1-完成侦察指令  reconnaissance_end 2-完成无人机先遣侦察指令 vau_reconnaissance_end 3、完成局部路径规划 plan_end 4-完成扫雷指令 minesweeper_end 5-完成电磁干扰 emi_end 6-完成侦打指令 hit_end 7-完成巡逻指令 patrol_end
+ | code | 成功状态码 |  | 
+ | frame_timestamp | 当前帧时间戳 |  | 
+状态码 | 200-成功 50X-失败 40X-超时 | 200-成功 50X-失败 40X-超时 | 200-成功 50X-失败 40X-超时 | 200-成功 50X-失败 40X-超时
+[/TABLE]
+## 附一：状态码定义
+[TABLE]
+状态码 | 子状态码 | 含义 | 场景
+200 | 200 | 成功 | 按照预期返回结果
+50X | 500 | 接口服务抛出异常错误 | 接口内部错误
+50X | 501 | Ros服务异常错误 | Ros中心崩溃
+50X | 502 | 权限相关异常错误 | 鉴权错误
+50X | 503 | 网络/网关异常错误 | 网络不通
+50X | 504 | 返回数据错误 | 格式或完整性错误
+40X | 400 | 请求超时未返回 | 超时未返回
+[/TABLE]
+## 附二：使用范例
+SwarmAEClient  ae_client = SwarmAEClient(ue_ip=”192.168.1.1”,ue_port=2000);
+frame_timestamp, sw_node, sw_code =
+ae_client.register_node(
+    node_type="四旋翼", node_name="节点1" , node_no=1, frame_timestamp=int(round(time.time() * 1000))
+)
+ae_client.register_node(
+    node_type="四轮车", node_name="节点2" , node_no=2, frame_timestamp=int(round(time.time() * 1000))
+)
+## 附三：类图
+## 附四：任务信息结构示例
+{ // 任务区域顶点坐标
+"arena":[{"x":-1203.74,"y":597.25}, {"x":-1003.74,"y":597.25}, {"x":-1203.74,"y":797.25}, {"x":-1003.74,"y":797.25}],
+// 电磁干扰区顶点坐标
+"emc_arena":[{"x":-1103.74,"y":597.25}, {"x":-1003.74,"y":597.25}, {"x":-1103.74,"y":797.25}, {"x":-1003.74,"y":797.25}],
+// 雷区顶点坐标
+"mine_arena":[{"x":-1153.74,"y":597.25}, {"x":-1003.74,"y":597.25}, {"x":-1153.74,"y":797.25}, {"x":-1003.74,"y":797.25}],
+//阶段1开始、结束线坐标 "subject_1":{ "start_line":[{"x":-1203.74,"y":197.25}, {"x":-1203.74,"y":597.25}], "end_line":[{"x":-1203.74,"y":197.25}, {"x":-1203.74,"y":597.25}] },
+// 阶段2开始、结束线坐标 "subject_2":{ "start_line":[{"x":-1203.74,"y":197.25}, {"x":-1203.74,"y":597.25}], "end_line":[{"x":-1203.74,"y":197.25}, {"x":-1203.74,"y":597.25}] },
+// 阶段3开始、结束线坐标 "subject_3":{ "start_line":[{"x":-1203.74,"y":197.25}, {"x":-1203.74,"y":597.25}], "end_line":[{"x":-1203.74,"y":197.25}, {"x":-1203.74,"y":597.25}] },
+// 阶段4开始、结束线坐标 "subject_4":{ "start_line":[{"x":-1203.74,"y":197.25}, {"x":-1203.74,"y":597.25}], "end_line":[{"x":-1203.74,"y":197.25}, {"x":-1203.74,"y":597.25}] },
+// 阶段5开始、结束线坐标 "subject_5":{ "start_line":[{"x":-1203.74,"y":197.25}, {"x":-1203.74,"y":597.25}], "end_line":[{"x":-1203.74,"y":197.25}, {"x":-1203.74,"y":597.25}] },
+// 阶段6开始、结束线坐标 "subject_6":{ "start_line":[{"x":-1203.74,"y":197.25}, {"x":-1203.74,"y":597.25}], "end_line":[{"x":-1203.74,"y":197.25}, {"x":-1203.74,"y":597.25}] } }
+## 附五：像素点坐标与UE坐标转换
+UE坐标：location_x,location_y
+像素点坐标：pixel_x,pixel_y
+pixel_x = int(scale * (location_x - world_offset[0]))
+pixel_y = int(scale * (location_y - world_offset[1]))

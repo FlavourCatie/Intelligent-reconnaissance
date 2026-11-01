@@ -1,0 +1,49 @@
+[
+    {
+        "type": "vehicle.imv.rb",
+        "vehicles": [
+
+            {
+                "position": "-1829.6, -517.7, 2.1",
+                "rotation": "0,0,0",
+                "teamId": "1",
+                "detectRadius": 10000
+            },
+            {
+                "position": "-1859.6, -517.4, 2.1",
+                "rotation": "0,0,0",
+                "teamId": "1",
+                "detectRadius": 10000
+            },            
+            {
+                "position": "-1887.4, -517.4, 2.1",
+                "rotation": "0,0,0",
+                "teamId": "1",
+                "detectRadius": 10000
+            }
+        ]
+    },
+    {
+        "type": "vehicle.hrt.m10",
+        "vehicles": [
+            {
+                "position": "-1829.6, -517.7, 10",
+                "rotation": "0,0,0",
+                "teamId": "1",
+                "detectRadius": 30000
+            },
+            {
+                "position": "-1859.6, -517.4, 10",
+                "rotation": "0,0,0",
+                "teamId": "1",
+                "detectRadius": 30000
+            },
+            {
+                "position": "-1887.4, -517.4, 10",
+                "rotation": "0,0,0",
+                "teamId": "1",
+                "detectRadius": 30000
+            }
+        ]
+    }
+]
