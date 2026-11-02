@@ -83,10 +83,28 @@ python .\demo_midterm.py
 | 目标发现与 1:1 最优分配 | 已实现 |
 | 无人车 A\* 规划 / 避障 / 超车 | 已实现（组员交付） |
 | 战场态势小地图 | 已实现（含搜索区高亮、自动 ROI） |
-| 无人机 3D 飞行动力学 | **受交付 SDK 限制**，当前用运动学模型驱动 |
+| 无人机 3D 飞行动力学 | **根因已定位并修复**（2026-11-02）：路径空格导致飞控 SITL 收不到心跳；改走无空格入口后 SITL 1.1 s 内回心跳 |
 
-> 飞控通道不可用（`control_kinetic_*` 零位移、`launch_kinetic` 全返 `None`），
-> 详细证据见 `WorkPlace/docs/中期答辩_技术说明.md` 第 5 节。
+> **飞控结论更新**：此前判断"交付 SDK 飞控通道不可用"并不成立。
+> `launch_kinetic` 是 V1.4 已删除的空壳（本来就该返回 `None`），
+> 而零位移的真因是 `driver.exe` 拉起 ArduPilot SITL 时命令行被 **工作区路径里的空格**
+> 劈开，SITL 退回 TCP 5760，飞控收不到 MAVLink 心跳。
+> 证据、复现与修复见 [`WorkPlace/docs/飞控调通_根因与修复.md`](WorkPlace/docs/飞控调通_根因与修复.md)。
+>
+> 一条命令复现：`python WorkPlace\tools\sitl_probe.py`；
+> 一条命令修：`python WorkPlace\tools\sim_link.py --create`（建 `C:\kyxz` 联接，从那里起 `start.bat`）。
+
+---
+
+## 排障工具（2026-11 新增，都只用标准库）
+
+| 命令 | 用途 |
+|---|---|
+| `python WorkPlace\tools\env_guard.py` | 环境体检：Python/依赖版本、路径空格、SDK、课程包、端口、进程 |
+| `python WorkPlace\tools\env_guard.py --snapshot ...` / `--diff` | 环境指纹快照 / 漂移比对（抓"谁动了环境"） |
+| `python WorkPlace\tools\sitl_probe.py` | 飞控链路探针：SITL 起不起得来、有没有 MAVLink 心跳 |
+| `python WorkPlace\tools\sim_link.py` | 给课程环境建无空格入口（飞控根因的一键修复） |
+
 
 ---
 
