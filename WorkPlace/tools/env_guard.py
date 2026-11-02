@@ -495,7 +495,8 @@ def main(argv=None):
         if folder and not os.path.isdir(folder):
             os.makedirs(folder)
         import io
-        with io.open(args.snapshot, "w", encoding="utf-8") as fp:
+        # newline="\n"：仓库 .gitattributes 规定 json 走 LF，别让 Windows 写出 CRLF
+        with io.open(args.snapshot, "w", encoding="utf-8", newline="\n") as fp:
             fp.write(json.dumps(data, ensure_ascii=False, indent=2, sort_keys=True))
         print()
         print("指纹已写入：%s" % args.snapshot)
