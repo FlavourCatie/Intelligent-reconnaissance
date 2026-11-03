@@ -162,36 +162,42 @@ def subdivide_strips(strips, n_parts):
     return out
 
 
-def split_strip_safe(strip, planner, step=15.0):
-    """把一条扫描线在禁飞区内切开，只保留安全子段。
 
-    为什么要切开而不是绕行：扫描线的意义是"覆盖"，
-    一旦为了绕禁飞区兜出去，那一段就漏扫了；切开只是跳过禁飞区本身
-    （那里本来也不允许进入），两侧照常扫。
-    """
+def split_strip_safe(strip, planner, step=15.0):
+    """Split a strip into safe segments, keeping only safe endpoints."""
     (ax, ay), (bx, by) = strip
-    L = math.hypot(bx - ax, by - ay)
-    if planner is None or L < 1e-6:
+    if planner is None:
         return [(tuple(strip[0]), tuple(strip[1]))]
-    n = max(1, int(math.ceil(L / step)))
-    runs, cur = [], None
+
+    length = math.hypot(bx - ax, by - ay)
+    n = max(1, int(math.ceil(length / step)))
+    runs = []
+    cur = None
+    last = None
+
+    def save_run():
+        if cur is not None and last is not None:
+            if math.hypot(last[0] - cur[0], last[1] - cur[1]) > 1.0:
+                runs.append((cur, last))
+
     for i in range(n + 1):
-        t_ = i / float(n)
-        x = ax + (bx - ax) * t_
-        y = ay + (by - ay) * t_
-        try:
-            ok = planner.point_safe((x, y), True)
-        except Exception:
-            ok = True
-        if ok and cur is None:
-            cur = (x, y)
-        elif not ok and cur is not None:
-            runs.append((cur, (x, y)))
+        t = i / float(n)
+        point = (ax + (bx - ax) * t, ay + (by - ay) * t)
+
+        if planner.point_safe(point, True):
+            if cur is None:
+                cur = point
+            elif not planner.segment_safe(last, point, True):
+                save_run()
+                cur = point
+            last = point
+        else:
+            save_run()
             cur = None
-    if cur is not None:
-        runs.append((cur, (bx, by)))
-    return [(a, b) for a, b in runs
-            if math.hypot(b[0] - a[0], b[1] - a[1]) > 1.0]
+            last = None
+
+    save_run()
+    return runs
 
 
 def segment_len(strip):
