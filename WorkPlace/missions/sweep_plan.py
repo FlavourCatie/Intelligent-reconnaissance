@@ -289,7 +289,10 @@ def strip_routes(strip_run_lists, indices, start, keep_order=False):
 
 
 def path_length(route):
-    return sum(math.dist(a, b) for a, b in zip(route, route[1:]))
+    return sum(
+        math.hypot(b[0] - a[0], b[1] - a[1])
+        for a, b in zip(route, route[1:])
+    )
 
 
 def split_longest(strip_run_lists, n_want):

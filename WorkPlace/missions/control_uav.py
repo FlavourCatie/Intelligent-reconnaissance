@@ -376,10 +376,14 @@ class _SdkLog(object):
 
 
 def sdk_call(logger, method, *args, **kwargs):
-    # The bundled SDK prints some errors internally; keep those out of the console.
     stream = _SdkLog(logger)
-    with contextlib.redirect_stdout(stream), contextlib.redirect_stderr(stream):
-        return method(*args, **kwargs)
+    original_argv = sys.argv
+    try:
+        sys.argv = original_argv[:1]
+        with contextlib.redirect_stdout(stream), contextlib.redirect_stderr(stream):
+            return method(*args, **kwargs)
+    finally:
+        sys.argv = original_argv
 
 
 class UavVehicle(object):
@@ -484,7 +488,19 @@ def run_controller(vehicles, planner, routes, logger, use_default=False):
             logger.warning("SYNTHETIC defaults enabled until the first real discovery")
         while True:
             positions = dict((name, vehicles[name].position()) for name in UAV_NAMES)
+
+            # Minimum horizontal separation at the shared flight altitude.
+            for i, first in enumerate(UAV_NAMES):
+                for second in UAV_NAMES[i + 1:]:
+                    separation = distance(positions[first], positions[second])
+                    if separation < 20.0:
+                        raise SafetyError(
+                            "UAV separation too small: %s/%s = %.2f m"
+                            % (first, second, separation)
+                        )
+
             commands, updates = {}, {}
+
             # Validate all three next commands before sending any of this frame.
             for name in UAV_NAMES:
                 point, route = positions[name], routes[name]
