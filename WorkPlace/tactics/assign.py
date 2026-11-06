@@ -100,21 +100,22 @@ def solve(vehicles, targets, eta_fn, prev=None, improvement=0.20,
     best = None       # (key, assign, bottleneck, total, J)
     n_v = len(vehicles)
     idx_all = list(range(len(cols)))
-    for combo in itertools.permutations(idx_all, n_v):
-        # 同一 target 的两个阵位不能给同一辆车 —— permutations 天然满足
-        assign = [(vi, cols[c][0], cols[c][1]) for vi, c in enumerate(combo)]
-        # 锁定车必须在原位置
-        ok = True
-        for vi in locked_v:
-            want = fixed.get(vi)
-            if not want:
+    # 阵位可能少于车（例如只剩一个普通目标）：只派 k 辆车，连「派哪 k 辆」一起枚举
+    k = min(n_v, len(cols))
+    for vs in itertools.combinations(range(n_v), k):
+        for combo in itertools.permutations(idx_all, k):
+            assign = [(vs[i], cols[combo[i]][0], cols[combo[i]][1]) for i in range(k)]
+            # 锁定（L2）的车只允许留在原目标上
+            bad = False
+            for (vi, ti, _si) in assign:
+                if vi in locked_v:
+                    want = fixed.get(vi)
+                    if want and want.get("tid") and targets[ti]["tid"] != want["tid"]:
+                        bad = True
+                        break
+            if bad:
                 continue
-            got = assign[vi]
-            if targets[got[1]]["tid"] != want.get("tid_hint", targets[got[1]]["tid"]):
-                pass
-        if not ok:
-            continue
-        bottleneck, total, J = _evaluate(assign, vehicles, targets, eta_fn, wait)
+            bottleneck, total, J = _evaluate(assign, vehicles, targets, eta_fn, wait)
         key = (round(bottleneck, 3), round(total, 3))
         if best is None or key < best[0]:
             best = (key, assign, bottleneck, total, J)
