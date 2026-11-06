@@ -115,6 +115,53 @@ def near_any_polygon(x, y, polys, margin):
     return any(point_in_polygon(x, y, p) for p in polys)
 
 
+def junction_points(n, rect, avoid=None, avoid_margin=30.0, rng=None):
+    """从骨架图里挑 n 个路口中心（世界坐标），供合围打击使用。"""
+    import numpy as np
+    from PIL import Image
+    from skimage.morphology import skeletonize
+    from scipy.ndimage import convolve
+    import json as _json
+
+    this = os.path.dirname(os.path.abspath(__file__))
+    wp = os.path.dirname(this)
+    skl = os.path.join(wp, "assets", "skeletonized_image.png")
+    meta = os.path.join(wp, "config", "roadnet_meta.json")
+    img = np.array(Image.open(skl))
+    sk = skeletonize(np.all(img >= 200, axis=-1) if img.ndim == 3 else (img >= 200))
+    k = np.ones((3, 3), dtype=int)
+    k[1, 1] = 0
+    nb = convolve(sk.astype(int), k, mode="constant")
+    ys, xs = np.nonzero(sk & (nb >= 3))
+    scale, off = 1.0, (0.0, 0.0)
+    try:
+        with open(meta, "r", encoding="utf-8-sig") as fp:
+            m = _json.load(fp)
+        scale = float(m.get("scale", 1.0))
+        off = tuple(m.get("offset", (0.0, 0.0)))
+    except Exception:
+        pass
+    cand = []
+    for i in range(len(xs)):
+        wx, wy = xs[i] * scale + off[0], ys[i] * scale + off[1]
+        if rect is not None and not (rect[0] <= wx <= rect[2] and rect[1] <= wy <= rect[3]):
+            continue
+        if avoid and near_any_polygon(wx, wy, avoid, avoid_margin):
+            continue
+        cand.append((float(wx), float(wy)))
+    if not cand:
+        return []
+    rng = rng or random.Random(0)
+    rng.shuffle(cand)
+    out = []
+    for p in cand:
+        if all((p[0] - q[0]) ** 2 + (p[1] - q[1]) ** 2 >= 80.0 ** 2 for q in out):
+            out.append(p)
+        if len(out) >= n:
+            break
+    return out
+
+
 def sample_road_points(mask, offset, arena, count, min_sep, rng, max_try=20000,
                       region=None, avoid=None, avoid_margin=30.0, rect=None):
     """在 arena 内的道路像素上采样 count 个点，返回世界坐标 [(x, y)]。"""
@@ -218,6 +265,8 @@ def main():
                     help="把敌人从道路中心横向挪开多少米（默认14）。"
                          "放在路正中间时，无人车会把「目标」本身当成挡路障碍，"
                          "反复倒车最后卡死；挪到路边就留出了车道。")
+    ap.add_argument("--junction", type=int, default=0,
+                    help="强制把前 N 个敌人撒在路口中心（用于合围打击演示）")
     ap.add_argument("--avoid-margin", type=float, default=30.0,
                     help="目标离禁飞区至少多远 m（默认30；设成探测半径就能保证每处敌人都能被扫到）")
     ap.add_argument("--avoid-nofly", action="store_true", default=True,
@@ -299,13 +348,37 @@ def main():
         pts = sample_road_points(mask, offset, arena, args.count, args.min_sep, rng,
                                  region=region, avoid=avoid, rect=rect,
                                  avoid_margin=args.avoid_margin)
+        # --junction N：前 N 个强制放在路口中心（合围打击演示用）
+        if args.junction > 0:
+            try:
+                jpts = junction_points(args.junction, rect, avoid, args.avoid_margin)
+            except Exception as e:
+                print("[路口] 取点失败（忽略）: %r" % (e,))
+                jpts = []
+            if jpts:
+                keep = [p for p in pts
+                        if all((p[0] - q[0]) ** 2 + (p[1] - q[1]) ** 2 >= args.min_sep ** 2
+                               for q in jpts)]
+                pts = jpts + keep[:max(0, args.count - len(jpts))]
+                print("[路口] 已把 %d 个敌人放到路口：%s"
+                      % (len(jpts), [(round(a), round(b)) for a, b in jpts]))
         if len(pts) < args.count:
             print("[警告] 只找到 %d 个可行点（要求 %d），可以调小 --min-sep"
                   % (len(pts), args.count))
         # 把敌人从路面中心挪到路边：留出车道，无人车才不会把目标当障碍
+        # 但**路口敌人不挪**：挪 14 m 就可能从"路口"变成"路段"，合围判定会失效
+        _junction_set = set()
+        if args.junction > 0:
+            try:
+                _junction_set = set((round(a, 1), round(b, 1)) for a, b in jpts)
+            except Exception:
+                _junction_set = set()
         if args.off_road > 0 and pts:
             moved = []
             for (x, y) in pts:
+                if (round(x, 1), round(y, 1)) in _junction_set:
+                    moved.append((x, y))      # 路口敌人保持原位置
+                    continue
                 best = None
                 for ang_deg in (0, 90, 180, 270, 45, 135, 225, 315):
                     ang = math.radians(ang_deg)

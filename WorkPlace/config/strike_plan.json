@@ -1,0 +1,41 @@
+{
+  "groups": [
+    {
+      "target_id": "E-174_-352",
+      "kind": "road",
+      "junction_degree": 1,
+      "gap_branch": null,
+      "slots": [
+        {
+          "vid": "UGV1",
+          "branch": "center",
+          "pos": [
+            -173.53,
+            -352.32199999999995
+          ],
+          "hold": null,
+          "eta": 43.7
+        }
+      ],
+      "fire_rule": "single",
+      "state": "S3",
+      "t_star": 43.7
+    }
+  ],
+  "commitment": {
+    "UGV1": "L1"
+  },
+  "_J": 21.837978668829194,
+  "bottleneck": 43.67595733765839,
+  "total": 43.67595733765839,
+  "idle": [],
+  "line": {
+    "leader": null,
+    "members": [],
+    "formation": "none",
+    "anchor": null
+  },
+  "t_plan": 1793981730.9591484,
+  "schema": 1,
+  "plan_id": 23
+}

@@ -221,6 +221,112 @@ def assign_targets(points, starts, n=3, headings=None, trails=None):
     return list(best)
 
 
+try:
+    from tactics import slots as _tactics_slots
+except Exception:
+    _tactics_slots = None
+
+_TACTICS_MASK = None
+_TACTICS_ENCIRCLE = {}   # tid -> (x, y, need_slots)
+
+
+def _tactics_mask():
+    """道路掩膜（懒加载），用于路口判定与阵位吸附。"""
+    global _TACTICS_MASK
+    if _TACTICS_MASK is not None:
+        return _TACTICS_MASK
+    if _tactics_slots is None:
+        return None
+    try:
+        _TACTICS_MASK = _tactics_slots.RoadMask.from_png(
+            os.path.join(WORKPLACE_DIR, "assets", "roadnet_raw.png"),
+            meta_path=os.path.join(WORKPLACE_DIR, "config", "roadnet_meta.json"))
+    except Exception:
+        _TACTICS_MASK = None
+    return _TACTICS_MASK
+
+
+# tid -> (x, y, 需要几个阵位才算"到齐")
+_TACTICS_ENCIRCLE = {}
+
+
+def tactics_decide(tac, now, free_idx, pool, ugvs, uav_vehicles, radius,
+                   binary=None, scale=1.0, off=(0.0, 0.0)):
+    """调用战术层：喂覆盖 + 车辆 + 敌人，收回「每台车去哪」。
+
+    返回 {vid: (x, y)}；空 dict 表示没有可用计划（调用方退回贪心）。
+    """
+    # 1) 覆盖：无人机当前位置记一笔
+    for n in cu.UAV_NAMES:
+        try:
+            p = uav_vehicles[n].position()
+            tac.mark_coverage(p[0], p[1], radius)
+        except Exception:
+            pass
+    # 2) 车辆
+    vehicles = []
+    for k in free_idx:
+        pose = ugvs[k].get_state().pose_
+        vehicles.append({"vid": UGV_NAMES[k],
+                         "pos": (float(pose.x_), float(pose.y_)),
+                         "commit": "L0"})
+    # 3) 敌人（先用普通目标占位，路口阵位由 P2 的 slots 模块接管）
+    enemies = []
+    _mask = _tactics_mask()
+    _TACTICS_ENCIRCLE.clear()   # 每轮重建，避免已消灭目标残留黄圈
+    for i, p in enumerate(pool):
+        # 只处理任务区内的敌人：区外目标会被路网裁剪挡住，派车必卡死
+        if not tac.zone.contains(float(p[0]), float(p[1]), margin=20.0):
+            continue
+        # 目标 id 用坐标生成（原来用 pool 下标，敌人减少后会错位，黄圈就跑到别人身上）
+        tid = "E%d_%d" % (int(round(float(p[0]))), int(round(float(p[1]))))
+        kind, deg, slots_ = "road", 1, None
+        if _mask is not None:
+            try:
+                kind, _branches = _tactics_slots.classify(
+                    _mask, (float(p[0]), float(p[1])))
+                if kind in ("junction", "tee") and len(_branches) >= 2:
+                    _ss = _tactics_slots.build_slots(
+                        _mask, (float(p[0]), float(p[1])), _branches)
+                    if _ss:
+                        slots_ = [{"sid": s["sid"], "pos": s["pos"]} for s in _ss]
+                        deg = len(_branches)
+                        _TACTICS_ENCIRCLE[tid] = (float(p[0]), float(p[1]),
+                                                  len(_ss))
+                else:
+                    kind = "road"
+            except Exception:
+                kind, deg, slots_ = "road", 1, None
+        try:
+            log("[分类] %s (%.0f,%.0f) -> %s 分支=%d 阵位=%d"
+                % (tid, p[0], p[1], kind, deg, len(slots_ or [])))
+        except Exception:
+            pass
+        enemies.append((tid, (float(p[0]), float(p[1])), kind, deg, float(now), slots_))
+    # 4) 前沿候选：路网格点抽样（每 25 像素一个）
+    road_pts = None
+    if binary is not None:
+        road_pts = []
+        step = 25
+        for py_ in range(0, binary.shape[0], step):
+            for px_ in range(0, binary.shape[1], step):
+                if binary[py_, px_]:
+                    wx, wy = ugv.p2w(px_, py_, scale, off)
+                    road_pts.append((float(wx), float(wy)))
+        if len(road_pts) > 4000:
+            road_pts = road_pts[::max(1, len(road_pts) // 4000)]
+    plan = tac.update(now, vehicles, enemies, road_points=road_pts)
+    if not plan:
+        return {}
+    out = {}
+    for g in plan.get("groups", []):
+        for s in g.get("slots", []):
+            out[s["vid"]] = (s["pos"][0], s["pos"][1])
+    for it in plan.get("idle", []):
+        out.setdefault(it["vid"], (it["frontier"][0], it["frontier"][1]))
+    return out
+
+
 def freeze_flight_driver():
     """结束飞控驱动，免得它在 5 Hz 写自己的位姿、和我们的 set_transform 抢高度。
 
@@ -650,6 +756,16 @@ def parse_args():
     g.add_argument("--no-face-target", action="store_true",
                    help="不把车转向目标（默认会转）。三台车出生朝向相同，"
                         "不转的话敌人位于侧支路时车必须掉头，路口空间不够会卡死")
+    g.add_argument("--tactics", action="store_true", default=False,
+                   help="启用战术层（编队/前沿待机/计划文件派车）；默认关闭，保持原有贪心派车")
+    g.add_argument("--zone-clip", action="store_true", default=False,
+                   help="把路网裁剪到任务区内（默认关：裁剪会切断边界道路，把车挡在外面）")
+    g.add_argument("--ugv-start", default=None,
+                   help="开局把三台无人车整体传送到 x,y（仿真里 UGV 出生点写死，改 json 无效）")
+    g.add_argument("--zone", default=None,
+                   help="战术层任务区 x0,y0,x1,y1（--tactics 时必填，无默认值）")
+    g.add_argument("--plan-file", default=None,
+                   help="strike_plan.json 路径（默认 WorkPlace/config/strike_plan.json）")
     g.add_argument("--dispatch-gap", type=float, default=4.0,
                    help="三台车错开发车的间隔秒数（默认4）。同时出发容易在同一个路口"
                         "挤成一团，错开能显著减少卡死")
@@ -664,7 +780,7 @@ def parse_args():
     g.add_argument("--ignore-driver-check", action="store_true",
                    help="跳过飞控驱动进程检查")
 
-    value_opts = ("--scene", "--node-nos", "--focus", "--sweep-region", "--goto", "--area")
+    value_opts = ("--scene", "--node-nos", "--focus", "--sweep-region", "--goto", "--area", "--zone", "--plan-file", "--ugv-start")
     args = ap.parse_args(_fix_leading_dash(sys.argv[1:], value_opts))
     return args
 
@@ -677,6 +793,21 @@ def main():
 
     # 场景里到底放了多少个敌人（targets.json 的 count 之和）——
     # 用于"全歼才结束"的判定：只打光"已发现"的就收工，会在还有 5 个没被发现时误结束。
+    # ---- 战术层（可选）----
+    tactics = None
+    if getattr(args, "tactics", False):
+        try:
+            from tactics.zones import Zone
+            from tactics.planner import Tactics
+
+            _zone = Zone.parse(args.zone, name="tactics_zone")   # 缺 --zone 直接抛错
+            _plan_path = args.plan_file or os.path.join(
+                WORKPLACE_DIR, "config", "strike_plan.json")
+            tactics = Tactics(_zone, _plan_path)
+            log("战术层已启用：zone=%s  plan=%s" % (_zone.as_arg(), _plan_path))
+        except Exception as _e:
+            raise SystemExit("战术层初始化失败：%s" % (_e,))
+
     expected_enemies = 0
     try:
         _tp = os.path.join(args.scene, "targets.json")
@@ -963,6 +1094,75 @@ def main():
     binary, raw_bin, ugv_scale, ugv_off = ugv.load_binary(game)
     log("无人车路网已加载（骨架 + 真实路宽）")
 
+    # 战术层启用时：把任务区以外的路网全部置为不可通行，
+    # 这样 A* 只会在局部地图内找路，车不会开出作战区域。
+    if tactics is not None and getattr(args, "zone_clip", False):
+        try:
+            import numpy as _np
+            _z = tactics.zone
+            _h, _w = binary.shape
+            _xs = _np.arange(_w) * ugv_scale + ugv_off[0]
+            _ys = _np.arange(_h) * ugv_scale + ugv_off[1]
+            _m = 30.0     # 边界放宽 30 m：避免把贴着边界的道路切断导致路网断开
+            _inside = ((_xs[None, :] >= _z.x0 - _m) & (_xs[None, :] <= _z.x1 + _m)
+                       & (_ys[:, None] >= _z.y0 - _m) & (_ys[:, None] <= _z.y1 + _m))
+            binary = binary & _inside
+            log("路网已裁剪到任务区内：x[%.0f,%.0f] y[%.0f,%.0f]"
+                % (_z.x0, _z.x1, _z.y0, _z.y1))
+        except Exception as _e:
+            log("任务区裁剪失败（继续用全图）：%r" % (_e,))
+
+    # --ugv-start x,y：仿真里 UGV 出生点是写死的（改 vehicles.json 不生效，实测），
+    # 开局把三台车整体传送到任务区附近，保持相对队形与朝向；落点会用路网吸附，
+    # 避免像第一次那样落进绿化带（虽然能开出来，但很容易卡住）。
+    if getattr(args, "ugv_start", None):
+        try:
+            import control_ugv as _cu2
+            _carla = _cu2.SN.carla      # carla 由 swarmae SDK 提供，不是独立包
+            _tx, _ty = [float(s) for s in args.ugv_start.split(",")[:2]]
+            # 落点必须离任务区边界 ≥80 m：之前停在 x=-770（区域西边界）时，
+            # 两车被挤在边界道路上互相顶死，路径存在但一步也走不动。
+            if tactics is not None:
+                _z = tactics.zone
+                _mgn = 80.0
+                _tx = min(max(_tx, _z.x0 + _mgn), _z.x1 - _mgn)
+                _ty = min(max(_ty, _z.y0 + _mgn), _z.y1 - _mgn)
+            _px = [v.get_state().pose_.x_ for v in ugvs]
+            _py = [v.get_state().pose_.y_ for v in ugvs]
+            _dx = _tx - sum(_px) / len(_px)
+            _dy = _ty - sum(_py) / len(_py)
+            _snapped = 0
+            for _v in ugvs:
+                _p = _v.get_state().pose_
+                _gx, _gy = _p.x_ + _dx, _p.y_ + _dy
+                try:
+                    _ppx, _ppy = ugv.w2p(_gx, _gy, ugv_scale, ugv_off)
+                    _nx, _ny = ugv.nearest_road(binary, _ppx, _ppy, search=40)
+                    _gx, _gy = ugv.p2w(_nx, _ny, ugv_scale, ugv_off)
+                    _snapped += 1
+                except Exception:
+                    pass
+                _actor = _v.Vehicle_._SwarmAENode__actor
+                _actor.set_transform(_carla.Transform(
+                    _carla.Location(_gx, _gy, float(_p.z_)),   # 用原高度，别再写死 2.1（会插进路面/建筑）
+                    _carla.Rotation(pitch=0.0, yaw=float(_p.theta_), roll=0.0)))
+            log("已把无人车平移到 (%.0f, %.0f)（Δ=%.0f, %.0f，%d 台已吸附到路面）"
+                % (_tx, _ty, _dx, _dy, _snapped))
+            time.sleep(1.5)
+            for _v in ugvs:
+                _v.apply_control(0, 0, 0, True)
+        except Exception as _e:
+            log("无人车起始平移失败（继续用默认出生点）：%r" % (_e,))
+
+    try:
+        _sp = []
+        for _v in ugvs:
+            _p = _v.get_state().pose_
+            _sp.append("%s(%.0f,%.0f)" % (getattr(_v, "name", "?"), _p.x_, _p.y_))
+        log("无人车初始位置：%s" % "  ".join(_sp))
+    except Exception as _e:
+        log("读取无人车初始位置失败：%r" % (_e,))
+
     # ---------------- 小地图 ----------------
     names = list(UGV_NAMES) + list(cu.UAV_NAMES)
     types = dict([(n, "ugv") for n in UGV_NAMES] + [(n, "uav") for n in cu.UAV_NAMES])
@@ -1033,6 +1233,15 @@ def main():
         except Exception:
             pass
         # 把本轮真正的搜索区域画出来（青绿实线），与场景边界区分
+        # 战术层启用时，小地图框直接取任务区（Zone），保证车不会"跑出画面"
+        if tactics is not None:
+            try:
+                _z = tactics.zone
+                _cx, _cy = _z.center()
+                _half = max(_z.size()) / 2.0
+                search_roi = (_cx, _cy, _half)
+            except Exception:
+                pass
         if search_roi is not None:
             view.set_search_area(*search_roi)
             log("小地图：青绿实线框 = 本轮搜索区域 ±%.0f m" % search_roi[2])
@@ -1057,6 +1266,10 @@ def main():
     attacked_pts = []
     ugv_trails = dict((n, []) for n in UGV_NAMES)
     killed_pts = []
+    last_log_encircle = 0.0
+    last_watchdog = 0.0
+    last_dbg = 0.0
+    ugv_stuck = {}
     prev_uav_pos = None
     last_progress = time.time()
     engaged_pts = []
@@ -1168,10 +1381,35 @@ def main():
                         changed = True
                         log("发现目标 #%d %s (%.1f, %.1f)"
                             % (i, markers[i].cn, markers[i].x, markers[i].y))
+                        # 【分类前移】发现即判定路口，黄圈不用等到派车才出现
+                        if tactics is not None:
+                            try:
+                                _mk = _tactics_mask()
+                                if _mk is not None and _tactics_slots is not None:
+                                    _kd, _br = _tactics_slots.classify(
+                                        _mk, (markers[i].x, markers[i].y))
+                                    if _kd in ("junction", "tee") and len(_br) >= 2:
+                                        _sl = _tactics_slots.build_slots(
+                                            _mk, (markers[i].x, markers[i].y), _br)
+                                        if len(_sl) >= 2:
+                                            _key = "%d_%d" % (int(markers[i].x),
+                                                              int(markers[i].y))
+                                            _TACTICS_ENCIRCLE[_key] = (
+                                                markers[i].x, markers[i].y, len(_sl))
+                                            log("[分类] (%.0f,%.0f) -> %s 阵位=%d"
+                                                % (markers[i].x, markers[i].y,
+                                                   _kd, len(_sl)))
+                            except Exception:
+                                pass
                 if changed and view is not None:
                     view.known_override = len(enemies)
             view.discovered_override = len(enemies)
             view.set_markers(markers)
+            if _TACTICS_ENCIRCLE:
+                try:
+                    view.set_encircle([(v[0], v[1]) for v in _TACTICS_ENCIRCLE.values() if v[2] >= 2])
+                except Exception:
+                    pass
 
             # 记录每台车走过的点，供"重复路径代价"使用（每 15 m 一个采样点）
             try:
@@ -1200,8 +1438,10 @@ def main():
                 if a.status in ("arrived", "no_path", "stuck", "max_replan"):
                     ugv_agents.remove(a)
                     continue
-                # 【新增】目标已经被打死了就立即就地释放，不必再开到那个点
-                if any(math.hypot(a.target[0] - q[0], a.target[1] - q[1]) < 40.0
+                # 【新增】目标已经被打死了就立即就地释放，不必再开到那个点。
+                # 判定收紧到 12 m：之前 40 m 太宽，1 号车打死一个敌人时，
+                # 会把旁边路过的 2、3 号车也一起"释放"（表现为突然转向后停死）。
+                if any(math.hypot(a.target[0] - q[0], a.target[1] - q[1]) < 12.0
                        for q in killed_pts):
                     try:
                         a.finish("arrived", "目标已被消灭，就地待命")
@@ -1210,8 +1450,47 @@ def main():
                     uw = ugv_targets.pop(a.name, None)   # 清掉残留目标，避免小地图显示假目标
                     log("%s 的目标已被消灭，就地转为空闲" % a.name)
                     ugv_agents.remove(a)
+            # ---- 调试：每 5 s 打印三车状态（定位卡死用）----
+            if tactics is not None and (t0 - last_dbg) > 5.0:
+                last_dbg = t0
+                _dbg = []
+                for _a in ugv_agents:
+                    try:
+                        _p = _a.ugv.get_state().pose_
+                        _dbg.append("%s[%s] p(%.0f,%.0f) t(%.0f,%.0f) n=%d"
+                                    % (_a.name, _a.status, _p.x_, _p.y_,
+                                       _a.target[0], _a.target[1],
+                                       len(getattr(_a, "path", []) or [])))
+                    except Exception:
+                        pass
+                if _dbg:
+                    log("[状态] " + " | ".join(_dbg))
             free_idx = [i for i, n in enumerate(UGV_NAMES)
                         if all(a.name != n for a in ugv_agents)]
+            # ---- 看门狗：空闲且掉到任务区外的车，拉回路网（防止整轮卡死）----
+            if tactics is not None and (t0 - last_watchdog) > 3.0:
+                last_watchdog = t0
+                for _k, _nm in enumerate(UGV_NAMES):
+                    if any(_a.name == _nm for _a in ugv_agents):
+                        continue
+                    try:
+                        _pose = ugvs[_k].get_state().pose_
+                        if tactics.zone.contains(_pose.x_, _pose.y_, margin=5.0):
+                            continue
+                        _ppx, _ppy = ugv.w2p(_pose.x_, _pose.y_, ugv_scale, ugv_off)
+                        _nx, _ny = ugv.nearest_road(binary, _ppx, _ppy, search=80)
+                        _wx, _wy = ugv.p2w(_nx, _ny, ugv_scale, ugv_off)
+                        if tactics.zone.contains(_wx, _wy, margin=0.0):
+                            import control_ugv as _cu3
+                            _c3 = _cu3.SN.carla
+                            _act = ugvs[_k].Vehicle_._SwarmAENode__actor
+                            _act.set_transform(_c3.Transform(
+                                _c3.Location(_wx, _wy, 2.1),
+                                _c3.Rotation(pitch=0.0, yaw=float(_pose.theta_), roll=0.0)))
+                            ugvs[_k].apply_control(0, 0, 0, True)
+                            log("%s 在区域外，已拉回 (%.0f,%.0f)" % (_nm, _wx, _wy))
+                    except Exception:
+                        pass
             try:
                 scanned = all(p == "hold" for p in runner.phases_snapshot().values())
             except Exception:
@@ -1284,9 +1563,24 @@ def main():
                         starts_xy = [(ugvs[k].get_state().pose_.x_,
                                       ugvs[k].get_state().pose_.y_) for k in free_idx]
                         headings = [ugvs[k].get_state().pose_.theta_ for k in free_idx]
-                        chosen = assign_targets(pts, starts_xy, len(free_idx),
-                                                trails=[ugv_trails[UGV_NAMES[k]] for k in free_idx],
-                                                headings=headings)
+                        # ---- 战术层（可选）：由 planner 决定每台车去哪 ----
+                        plan_targets = None
+                        if tactics is not None:
+                            try:
+                                plan_targets = tactics_decide(
+                                    tactics, t0, free_idx, pool, ugvs,
+                                    uav_vehicles, args.sweep_radius,
+                                    binary=binary, scale=ugv_scale, off=ugv_off)
+                            except Exception as _e:
+                                log("战术层求解失败，退回贪心：%r" % (_e,))
+                                plan_targets = None
+                        if plan_targets:
+                            chosen = [plan_targets.get(UGV_NAMES[k]) for k in free_idx]
+                            chosen = [p for p in chosen if p is not None]
+                        else:
+                            chosen = assign_targets(pts, starts_xy, len(free_idx),
+                                                    trails=[ugv_trails[UGV_NAMES[k]] for k in free_idx],
+                                                    headings=headings)
                         # 【修正】目标点少于车数时，不要几台车挤同一个点（会互相挡死）。
                         # 去重后"有几处目标就派几台车"，剩下的车原地待命。
                         uniq = []
@@ -1301,6 +1595,7 @@ def main():
                             if slot >= len(uniq):
                                 break
                             name = UGV_NAMES[k]
+                            # （A* 预检曾在此，因对未吸附起点会误判而移除）
                             ugv_targets[name] = uniq[slot]
                             attacked_pts.append(uniq[slot])
                             a = ugv.UgvAgent(ugvs[k], name, uniq[slot],
@@ -1533,6 +1828,36 @@ def main():
                             best, bd = k, d
                     if best < 0 or bd is None or bd > args.attack_range:
                         continue
+                    # ---- 合围规则：路口目标必须"到齐"才允许开火 ----
+                    if tactics is not None and _TACTICS_ENCIRCLE:
+                        try:
+                            _need = None
+                            for _tid, _ev in _TACTICS_ENCIRCLE.items():
+                                if math.hypot(ob.x_ue[best] - _ev[0],
+                                              ob.y_ue[best] - _ev[1]) < 60.0:
+                                    _need = _ev[2]
+                                    break
+                            if _need:
+                                _ready = 0
+                                for _a in ugv_agents:
+                                    try:
+                                        _pose = _a.ugv.get_state().pose_
+                                        _dp = math.hypot(_pose.x_ - _a.target[0],
+                                                         _pose.y_ - _a.target[1])
+                                        _dt = math.hypot(_a.target[0] - ob.x_ue[best],
+                                                         _a.target[1] - ob.y_ue[best])
+                                        if _dp < 30.0 and _dt < 60.0:
+                                            _ready += 1
+                                    except Exception:
+                                        pass
+                                if _ready < _need:
+                                    if t0 - last_log_encircle > 5.0:
+                                        last_log_encircle = t0
+                                        log("%s 等待合围：就位 %d/%d，暂不开火"
+                                            % (a.name, _ready, _need))
+                                    continue
+                        except Exception:
+                            pass
                     try:
                         a.ugv.set_weapon(ob, best)
                         last_contact = t0

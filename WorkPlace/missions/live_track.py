@@ -1011,6 +1011,28 @@ class LiveView(object):
         return path
 
     # ---------------- 敌人图层 ----------------
+    def set_encircle(self, points, radius=45.0):
+        """把需要合围打击的敌人用黄色圆圈标出来（半径按米，默认 45 m）。"""
+        try:
+            if getattr(self, "_enc_patches", None) is None:
+                self._enc_patches = []
+            for p in self._enc_patches:
+                try:
+                    p.remove()
+                except Exception:
+                    pass
+            self._enc_patches = []
+            import matplotlib.patches as mpatches
+            for (x, y) in points or []:
+                px, py = self.scene.to_px(x, y)
+                for ax in (self.ax_zoom,):
+                    c = mpatches.Circle((px, py), radius, fill=False,
+                                        ec="#ffd400", lw=2.2, ls="-", zorder=9)
+                    ax.add_patch(c)
+                    self._enc_patches.append(c)
+        except Exception:
+            pass
+
     def set_markers(self, markers):
         self.markers = list(markers)
         hx, hy, fx, fy, ex, ey = [], [], [], [], [], []

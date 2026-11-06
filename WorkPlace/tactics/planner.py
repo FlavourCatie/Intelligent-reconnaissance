@@ -53,10 +53,16 @@ class Tactics(object):
             return None
 
         targets = []
-        for (tid, pos, kind, deg, t_first) in enemies:
+        for item in enemies:
+            tid, pos, kind, deg, t_first = item[:5]
+            given = item[5] if len(item) > 5 else None
             self._seen.setdefault(tid, t_first)
             wait = max(0.0, float(now) - float(self._seen[tid]))
-            slots = [{"sid": "center", "pos": (float(pos[0]), float(pos[1]))}]
+            if given:
+                slots = [{"sid": s.get("sid", "S%d" % i), "pos": tuple(s["pos"])}
+                         for i, s in enumerate(given)]
+            else:
+                slots = [{"sid": "center", "pos": (float(pos[0]), float(pos[1]))}]
             targets.append({
                 "tid": tid, "kind": kind, "junction_degree": int(deg or 0),
                 "wait": wait, "slots": slots,
