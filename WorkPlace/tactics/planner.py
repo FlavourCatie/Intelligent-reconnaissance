@@ -59,7 +59,7 @@ class Tactics(object):
             self._seen.setdefault(tid, t_first)
             wait = max(0.0, float(now) - float(self._seen[tid]))
             if given:
-                slots = [{"sid": s.get("sid", "S%d" % i), "pos": tuple(s["pos"])}
+                slots = [{"sid": s.get("sid", "S%d" % i), "pos": tuple(s["pos"]), "dir": s.get("dir")}
                          for i, s in enumerate(given)]
             else:
                 slots = [{"sid": "center", "pos": (float(pos[0]), float(pos[1]))}]

@@ -211,6 +211,14 @@ def build_slots(mask, center, branches, gap_index=None, standoff=18.0,
     返回 [{"sid": "N", "dir": deg, "pos": (x,y), "hold": (x,y)}, ...]
     """
     cx, cy = center
+    # 【分支去重】夹角 <30° 的分支视为同一条道路，只保留一个，避免两车走同一条路逼近
+    _kept = []
+    for _i0, (_d0, _w0) in enumerate(branches):
+        if any(abs(((_d0 - _d1) + 180.0) % 360.0 - 180.0) < 30.0 for _d1, _w1 in _kept):
+            continue
+        _kept.append((_d0, _w0))
+    if _kept:
+        branches = _kept
     # 丁字路口（2 个分支）采用"首尾夹击"：两个方向都要封，不留缺口
     if len(branches) <= 2:
         gap_index = -1

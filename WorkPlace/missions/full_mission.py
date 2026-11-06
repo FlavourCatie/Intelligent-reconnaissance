@@ -289,7 +289,7 @@ def tactics_decide(tac, now, free_idx, pool, ugvs, uav_vehicles, radius,
                     _ss = _tactics_slots.build_slots(
                         _mask, (float(p[0]), float(p[1])), _branches)
                     if _ss:
-                        slots_ = [{"sid": s["sid"], "pos": s["pos"]} for s in _ss]
+                        slots_ = [{"sid": s["sid"], "pos": s["pos"], "dir": s.get("dir")} for s in _ss]
                         deg = len(_branches)
                         _TACTICS_ENCIRCLE[tid] = (float(p[0]), float(p[1]),
                                                   len(_ss))

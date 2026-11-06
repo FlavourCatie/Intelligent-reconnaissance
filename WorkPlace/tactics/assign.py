@@ -62,6 +62,23 @@ def _evaluate(assign, vehicles, targets, eta, wait):
     return (bottleneck, total, J)
 
 
+def _prune_slots(targets, min_gap=45.0):
+    """同一目标内，两两夹角 <45° 的阵位只保留一个（同一条路不能派两台车）。"""
+    for t in targets:
+        slots = t.get("slots") or []
+        kept = []
+        for s in slots:
+            d = s.get("dir")
+            if d is None:
+                kept.append(s)
+                continue
+            if any(abs(((d - k.get("dir", 999.0)) + 180.0) % 360.0 - 180.0) < min_gap
+                   for k in kept if k.get("dir") is not None):
+                continue
+            kept.append(s)
+        t["slots"] = kept
+    return targets
+
 def solve(vehicles, targets, eta_fn, prev=None, improvement=0.20,
           max_preempt=2, timeout_targets=3):
     """返回新计划 dict，或 None（保持现状）。
@@ -70,6 +87,9 @@ def solve(vehicles, targets, eta_fn, prev=None, improvement=0.20,
     """
     if not vehicles or not targets:
         return None
+    targets = _prune_slots([dict(t, slots=list(t.get("slots") or [])) for t in targets])
+
+
 
     # 候选阵位：每个 target 的每个 slot 展开成一列
     cols = []
@@ -115,10 +135,26 @@ def solve(vehicles, targets, eta_fn, prev=None, improvement=0.20,
                         break
             if bad:
                 continue
+            # 【分支互斥】同一目标的两个阵位若方向夹角 <45°，视为同一条路，禁止同时占用
+            _dirs = {}
+            _clash = False
+            for (_vi, _ti, _si) in assign:
+                _d = targets[_ti]["slots"][_si].get("dir")
+                if _d is None:
+                    continue
+                for _dd in _dirs.get(_ti, []):
+                    if abs(((_d - _dd) + 180.0) % 360.0 - 180.0) < 45.0:
+                        _clash = True
+                        break
+                if _clash:
+                    break
+                _dirs.setdefault(_ti, []).append(_d)
+            if _clash:
+                continue
             bottleneck, total, J = _evaluate(assign, vehicles, targets, eta_fn, wait)
-        key = (round(bottleneck, 3), round(total, 3))
-        if best is None or key < best[0]:
-            best = (key, assign, bottleneck, total, J)
+            key = (round(bottleneck, 3), round(total, 3))
+            if best is None or key < best[0]:
+                best = (key, assign, bottleneck, total, J)
 
     if best is None:
         return None
