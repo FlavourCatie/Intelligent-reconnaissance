@@ -1887,6 +1887,17 @@ def main():
                                             _ready += 1
                                     except Exception:
                                         pass
+                                # need 用"实际被派到这个路口的车数"，而不是阵位数：
+                                # 车不够时（3 车对 4 敌）阵位可能多于车，按阵位数会永远等不齐
+                                _assigned = 0
+                                for _a2 in ugv_agents:
+                                    try:
+                                        if math.hypot(_a2.target[0] - ob.x_ue[best],
+                                                     _a2.target[1] - ob.y_ue[best]) < 60.0:
+                                            _assigned += 1
+                                    except Exception:
+                                        pass
+                                _need = max(1, min(_need, _assigned))
                                 if _ready < _need:
                                     if t0 - last_log_encircle > 5.0:
                                         last_log_encircle = t0

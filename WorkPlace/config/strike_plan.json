@@ -1,33 +1,33 @@
 {
   "groups": [
     {
-      "target_id": "E-390_-625",
-      "kind": "junction",
-      "junction_degree": 2,
+      "target_id": "E-532_-349",
+      "kind": "road",
+      "junction_degree": 1,
       "gap_branch": null,
       "slots": [
         {
-          "vid": "UGV2",
-          "branch": "W",
+          "vid": "UGV3",
+          "branch": "center",
           "pos": [
-            -408.5,
-            -625.3
+            -531.53,
+            -349.32
           ],
           "hold": null,
-          "eta": 40.6
+          "eta": 24.2
         }
       ],
-      "fire_rule": "all_arrived_minus_gap",
+      "fire_rule": "single",
       "state": "S3",
-      "t_star": 40.6
+      "t_star": 24.2
     }
   ],
   "commitment": {
-    "UGV2": "L1"
+    "UGV3": "L1"
   },
-  "_J": 20.43200320779791,
-  "bottleneck": 40.56400641559582,
-  "total": 40.56400641559582,
+  "_J": 12.10596210542099,
+  "bottleneck": 24.21192421084198,
+  "total": 24.21192421084198,
   "idle": [],
   "line": {
     "leader": null,
@@ -35,7 +35,7 @@
     "formation": "none",
     "anchor": null
   },
-  "t_plan": 1793986782.4699636,
+  "t_plan": 1793987931.965212,
   "schema": 1,
-  "plan_id": 33
+  "plan_id": 35
 }
