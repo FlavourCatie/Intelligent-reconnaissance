@@ -1399,6 +1399,16 @@ def main():
                                             log("[分类] (%.0f,%.0f) -> %s 阵位=%d"
                                                 % (markers[i].x, markers[i].y,
                                                    _kd, len(_sl)))
+                                        # P2：标记敌人在路口生成封锁区（多个封锁区重叠即自然合并成连通区）
+                                        try:
+                                            _bpx, _bpy = ugv.w2p(markers[i].x, markers[i].y,
+                                                                ugv_scale, ugv_off)
+                                            _br_ = 14.0 / max(1e-6, ugv_scale)
+                                            ugv.block_disk(binary, _bpx, _bpy, _br_)
+                                            log("[封锁] 路口 (%.0f,%.0f) 生成 %.0f m 封锁区"
+                                                % (markers[i].x, markers[i].y, 14.0))
+                                        except Exception:
+                                            pass
                             except Exception:
                                 pass
                 if changed and view is not None:

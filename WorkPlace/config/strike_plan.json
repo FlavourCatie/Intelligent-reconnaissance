@@ -25,9 +25,9 @@
   "commitment": {
     "UGV2": "L1"
   },
-  "_J": 20.41941479990375,
-  "bottleneck": 40.5388295998075,
-  "total": 40.5388295998075,
+  "_J": 20.418383708353954,
+  "bottleneck": 40.53676741670791,
+  "total": 40.53676741670791,
   "idle": [],
   "line": {
     "leader": null,
@@ -35,7 +35,7 @@
     "formation": "none",
     "anchor": null
   },
-  "t_plan": 1793983362.0815988,
+  "t_plan": 1793984009.8966963,
   "schema": 1,
-  "plan_id": 25
+  "plan_id": 27
 }
