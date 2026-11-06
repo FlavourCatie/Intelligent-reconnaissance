@@ -49,7 +49,7 @@ if (-not $NoSpawn) {
     Step ("spawning {0} enemies inside task area {1}" -f $Count, $Area)
     & $Py (Join-Path $Repo 'WorkPlace\tools\spawn_targets.py') `
         --scene $Scene --count $Count --rect $Area `
-        --off-road 14 --types dynamic.prop.soldier | Out-Host
+        --avoid-margin $SweepRadius --off-road 14 --types dynamic.prop.soldier | Out-Host
     Ok 'enemies written to targets.json'
 }
 

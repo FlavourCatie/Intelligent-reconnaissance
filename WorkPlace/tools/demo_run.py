@@ -73,6 +73,7 @@ def main():
                "--scene", args.scene,
                "--count", str(args.count),
                "--rect", area,
+               "--avoid-margin", "330",
                "--off-road", "14",
                "--types", "dynamic.prop.soldier"]
         print("撒 %d 个敌人..." % args.count)

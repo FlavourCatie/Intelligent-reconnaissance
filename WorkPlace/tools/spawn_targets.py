@@ -218,6 +218,8 @@ def main():
                     help="把敌人从道路中心横向挪开多少米（默认14）。"
                          "放在路正中间时，无人车会把「目标」本身当成挡路障碍，"
                          "反复倒车最后卡死；挪到路边就留出了车道。")
+    ap.add_argument("--avoid-margin", type=float, default=30.0,
+                    help="目标离禁飞区至少多远 m（默认30；设成探测半径就能保证每处敌人都能被扫到）")
     ap.add_argument("--avoid-nofly", action="store_true", default=True,
                     help="避开 game.json 里的禁飞区（默认开）")
     ap.add_argument("--no-avoid-nofly", dest="avoid_nofly", action="store_false",
@@ -230,7 +232,7 @@ def main():
     ap.add_argument("--list", action="store_true", help="只列出现有目标然后退出")
     args = ap.parse_args(_fix_leading_dash(
         sys.argv[1:], ("--offset", "--at", "--scene", "--roadnet", "--types",
-                       "--near", "--radius-min", "--off-road", "--rect")))
+                       "--near", "--radius-min", "--off-road", "--rect", "--avoid-margin")))
 
     if args.list:
         list_scene(args.scene)
@@ -295,7 +297,8 @@ def main():
             except Exception as e:
                 print("[避让] 读取禁飞区失败（不避让）: %r" % (e,))
         pts = sample_road_points(mask, offset, arena, args.count, args.min_sep, rng,
-                                 region=region, avoid=avoid, rect=rect)
+                                 region=region, avoid=avoid, rect=rect,
+                                 avoid_margin=args.avoid_margin)
         if len(pts) < args.count:
             print("[警告] 只找到 %d 个可行点（要求 %d），可以调小 --min-sep"
                   % (len(pts), args.count))

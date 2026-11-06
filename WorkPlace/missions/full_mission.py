@@ -675,6 +675,20 @@ def parse_args():
 def main():
     args = parse_args()
 
+    # 场景里到底放了多少个敌人（targets.json 的 count 之和）——
+    # 用于"全歼才结束"的判定：只打光"已发现"的就收工，会在还有 5 个没被发现时误结束。
+    expected_enemies = 0
+    try:
+        _tp = os.path.join(args.scene, "targets.json")
+        with open(_tp, "r", encoding="utf-8-sig") as _fp:
+            _groups = json.load(_fp)
+        for _g in _groups:
+            _types = _g.get("types") or []
+            if any(t in ("dynamic.prop.soldier", "dynamic.prop.stryker") for t in _types):
+                expected_enemies += int(_g.get("count") or len(_g.get("points") or []))
+    except Exception:
+        expected_enemies = 0
+
     # 飞行高度对 kinetic/kinematic/virtual 三种模式统一生效
     try:
         cu.set_altitude(args.uav_altitude)
@@ -1560,7 +1574,9 @@ def main():
                         view.set_markers(markers)
             # ---- 6. 结束判定 ----
             # 【新增】只要"已发现的敌人全部被打死"，就不必再等扫描收尾，直接结束。
-            all_killed = bool(enemies) and all(
+            # 【关键】必须打光场景里的全部敌人才算完成；只打光"已发现"的，会在还剩 5 个没找到时误结束。
+            _enough = (expected_enemies <= 0) or (len(killed_pts) >= expected_enemies)
+            all_killed = _enough and bool(enemies) and all(
                 any(math.hypot(p[0] - q[0], p[1] - q[1]) < 80.0 for q in killed_pts)
                 for p in enemies)
             if all_killed and (t0 - last_contact) > 5.0:
