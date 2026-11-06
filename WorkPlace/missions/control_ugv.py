@@ -407,8 +407,14 @@ class UgvAgent:
         state = struct.State(pose, abs(imu.v), imu.a)
 
         # 到达 (比路径终点, 已吸附到路)
+        # 【修正】只比"路网终点"会误判：目标离路 14 m 时，车已经开到目标旁边
+        # （实测距目标 1.1 m），但离路网终点还 >20 m，于是永远不判到达，
+        # 停在那儿 8 s 后被判成"疑似撞停 → stuck"。这里两个条件满足其一即到达。
         gx, gy = self.path[-1]
-        if utils.distance(pose.x_, pose.y_, gx, gy) < ARRIVE_DIST:
+        near_path_end = utils.distance(pose.x_, pose.y_, gx, gy) < ARRIVE_DIST
+        near_target = (self.target is not None and utils.distance(
+            pose.x_, pose.y_, self.target[0], self.target[1]) < ARRIVE_DIST)
+        if near_path_end or near_target:
             self.finish('arrived', "到达目标附近, 停车。位置(%.1f,%.1f) max_dev=%.1f m"
                         % (pose.x_, pose.y_, self.max_dev))
             return
@@ -500,6 +506,13 @@ class UgvAgent:
             if self.stuck_since is None:
                 self.stuck_since = time.time()
             elif time.time() - self.stuck_since > 8.0:
+                # 停在目标旁边也算完成，别报 stuck（终判是给"真卡住"用的）
+                if (self.target is not None and utils.distance(
+                        pose.x_, pose.y_, self.target[0],
+                        self.target[1]) < ARRIVE_DIST * 1.5):
+                    self.finish('arrived', "已在目标旁停稳。位置(%.1f,%.1f)"
+                                % (pose.x_, pose.y_))
+                    return
                 self.finish('stuck', "疑似撞停(速度<0.3 持续 8s)。位置(%.1f,%.1f) dev=%.1f"
                             % (pose.x_, pose.y_, dev))
                 return

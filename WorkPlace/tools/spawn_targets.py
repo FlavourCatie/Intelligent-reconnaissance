@@ -116,7 +116,7 @@ def near_any_polygon(x, y, polys, margin):
 
 
 def sample_road_points(mask, offset, arena, count, min_sep, rng, max_try=20000,
-                      region=None, avoid=None, avoid_margin=30.0):
+                      region=None, avoid=None, avoid_margin=30.0, rect=None):
     """在 arena 内的道路像素上采样 count 个点，返回世界坐标 [(x, y)]。"""
     h, w = mask.shape
     # 先把 arena 的包围盒换算成像素范围，缩小搜索空间
@@ -144,6 +144,10 @@ def sample_road_points(mask, offset, arena, count, min_sep, rng, max_try=20000,
         if near_any_polygon(wx, wy, avoid, avoid_margin):
             # 落在禁飞区里的敌人：无人机规划不出航线，会导致"有一架不出动"
             continue
+        if rect is not None:
+            # (x0, y0, x1, y1)：矩形区域内均匀撒点（半图整体铺开，而不是挤成一小团）
+            if not (rect[0] <= wx <= rect[2] and rect[1] <= wy <= rect[3]):
+                continue
         if region is not None:
             # (cx, cy, rmin, rmax)：只取环带内的点
             cx, cy, rmin, rmax = region
@@ -204,6 +208,8 @@ def main():
                     help="类型，逗号分隔；可用: %s" % ",".join(SPAWNABLE))
     ap.add_argument("--seed", type=int, default=None, help="随机种子（便于复现）")
     ap.add_argument("--min-sep", type=float, default=60.0, help="目标之间最小间距 m")
+    ap.add_argument("--rect", default=None,
+                    help="矩形撒点区 x0,y0,x1,y1（半图整体铺开）")
     ap.add_argument("--near", default=None,
                     help="只在某点附近生成 x,y（配合 --radius，用于缩短侦查时间）")
     ap.add_argument("--radius", type=float, default=600.0,
@@ -224,7 +230,7 @@ def main():
     ap.add_argument("--list", action="store_true", help="只列出现有目标然后退出")
     args = ap.parse_args(_fix_leading_dash(
         sys.argv[1:], ("--offset", "--at", "--scene", "--roadnet", "--types",
-                       "--near", "--radius-min", "--off-road")))
+                       "--near", "--radius-min", "--off-road", "--rect")))
 
     if args.list:
         list_scene(args.scene)
@@ -264,6 +270,12 @@ def main():
         offset = tuple(float(v) for v in args.offset.split(","))
         mask, _ = load_road_mask(args.roadnet)
         region = None
+        rect = None
+        if args.rect:
+            _v = [float(v) for v in args.rect.replace('，', ',').split(',')[:4]]
+            rect = (_v[0], _v[1], _v[2], _v[3])
+            print('[矩形生成] x[%.0f, %.0f] y[%.0f, %.0f]'
+                  % (rect[0], rect[2], rect[1], rect[3]))
         if args.near:
             cx, cy = [float(v) for v in args.near.replace('，', ',').split(',')[:2]]
             region = (cx, cy, max(0.0, args.radius_min), args.radius)
@@ -283,7 +295,7 @@ def main():
             except Exception as e:
                 print("[避让] 读取禁飞区失败（不避让）: %r" % (e,))
         pts = sample_road_points(mask, offset, arena, args.count, args.min_sep, rng,
-                                 region=region, avoid=avoid)
+                                 region=region, avoid=avoid, rect=rect)
         if len(pts) < args.count:
             print("[警告] 只找到 %d 个可行点（要求 %d），可以调小 --min-sep"
                   % (len(pts), args.count))

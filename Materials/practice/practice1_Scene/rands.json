@@ -1,16 +1,5 @@
 {
     "type": "dynamic.prop.hardbarricade",
-    "count": 2,
-    "points": [
-        {
-            "position": "-1245, -870.9, 0.60",
-            "rotation": "0,180,0"
-        },
-        {
-            "position": "-1245, -520, 0.60",
-            "rotation": "0,180,0"
-        }
-
-
-    ]
+    "count": 0,
+    "points": []
 }

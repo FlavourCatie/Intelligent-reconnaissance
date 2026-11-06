@@ -178,8 +178,13 @@ def snap_to_road(points, binary, scale, off, search=40):
     return uniq
 
 
-def assign_targets(points, starts, n=3):
-    """把 n 个目标点分给 n 台车，使总直线距离最短（暴力枚举，n=3 时最多几百次）。"""
+def assign_targets(points, starts, n=3, headings=None, trails=None):
+    """把 n 个目标点分给 n 台车，使总代价最小（暴力枚举，n=3 时最多几百次）。
+
+    headings 给出时，代价里加上"掉头/大角度转向"的惩罚：
+    这条路的通行难度不只看直线距离——出生点就要掉头的车极容易和别的车挤死
+    （实测 UX）。惩罚项 ≈ 车身需要转过的角度 × 45 m 等效距离。
+    """
     if not points:
         return []
     if len(points) < n:
@@ -187,11 +192,30 @@ def assign_targets(points, starts, n=3):
         # 恰好相等时必须走下面的最优匹配，否则会出现"两车同一目标"。
         return [points[i % len(points)] for i in range(n)]
 
+    def _seg_dist(px, py, a, b):
+        """点到线段距离（用来判断"这段路是不是又走一遍"）。"""
+        ax, ay = a; bx, by = b
+        dx, dy = bx - ax, by - ay
+        L2 = dx * dx + dy * dy
+        if L2 <= 1e-9:
+            return math.hypot(px - ax, py - ay)
+        tt = max(0.0, min(1.0, ((px - ax) * dx + (py - ay) * dy) / L2))
+        return math.hypot(px - (ax + tt * dx), py - (ay + tt * dy))
+
+    def cost_of(start, heading, goal, trail=None):
+        d = math.hypot(goal[0] - start[0], goal[1] - start[1])
+        if heading is None:
+            return d
+        bearing = math.atan2(goal[1] - start[1], goal[0] - start[0])
+        delta = abs((bearing - heading + math.pi) % (2 * math.pi) - math.pi)
+        return d + 45.0 * (delta / math.pi)      # 掉头约 +45 m 等效
+
     best, best_cost = None, None
     for combo in itertools.combinations(points, n):
         for perm in itertools.permutations(combo, n):
-            cost = sum(math.hypot(perm[i][0] - starts[i][0],
-                                  perm[i][1] - starts[i][1]) for i in range(n))
+            cost = sum(cost_of(starts[i], headings[i] if headings else None, perm[i],
+                            (trails[i] if trails and i < len(trails) else None))
+                       for i in range(n))
             if best_cost is None or cost < best_cost:
                 best, best_cost = perm, cost
     return list(best)
@@ -367,6 +391,68 @@ def compute_search_roi(uav_pos, ugv_pos, markers, args):
     return (cx, cy, half)
 
 
+def _all_uavs_at_altitude(uav_vehicles, tol=5.0):
+    """三架机是不是都已经到巡航高度（用于判断能否改航）。"""
+    try:
+        for name in cu.UAV_NAMES:
+            if uav_vehicles[name].position()[2] < cu.ALTITUDE - tol:
+                return False
+        return True
+    except Exception:
+        return False
+
+
+def parse_goto_points(text):
+    """把 "x,y;x,y;x,y" 解析成 [(x,y), ...]。分号和竖线都当分隔符。"""
+    if not text:
+        return []
+    points = []
+    for chunk in text.replace("|", ";").replace("，", ",").split(";"):
+        chunk = chunk.strip()
+        if not chunk:
+            continue
+        parts = [p for p in chunk.replace(" ", ",").split(",") if p.strip()]
+        if len(parts) < 2:
+            raise SystemExit("--goto 片段格式不对：%r（应为 x,y）" % chunk)
+        points.append((float(parts[0]), float(parts[1])))
+    return points
+
+
+def build_goto_routes(planner, starts, points, tol=None):
+    """把 --goto 给的坐标变成「起飞 → 直飞目标点」的两点航线。
+
+    points 少于三架机时按距离就近分配（可能多架飞同一个点）。
+    落在禁飞区/安全余量内的点会被丢弃并记日志——宁可不去，也不能撞禁飞区。
+    """
+    names = list(cu.UAV_NAMES)
+    if not points:
+        return None
+    safe = []
+    for (x, y) in points:
+        if planner.point_safe((x, y), planning=True):
+            safe.append((float(x), float(y)))
+        else:
+            log("goto 目标 (%.1f, %.1f) 在禁飞区/安全余量内，已丢弃" % (x, y))
+    if not safe:
+        return None
+
+    routes = {}
+    for i, name in enumerate(names):
+        start = starts[name]
+        if len(safe) >= len(names):
+            target = safe[i]
+            routes[name] = [start, target]
+        else:
+            target = min(safe, key=lambda p: math.hypot(p[0] - start[0], p[1] - start[1]))
+            routes[name] = [start, target]
+        if not planner.segment_safe(start, routes[name][-1]):
+            log("%s 的 goto 直线段不安全（穿禁飞区），改用绕行航点" % name)
+            via = planner.detour(start, routes[name][-1]) if hasattr(planner, "detour") else None
+            if via:
+                routes[name] = [start] + list(via) + [routes[name][-1]]
+    return routes
+
+
 def build_enemy_routes(planner, starts, points, per_uav=2):
     """按敌人实际位置给三架机排航线（就近分配 + 就近串联 + 走安全规划）。
 
@@ -476,11 +562,35 @@ def parse_args():
                    default="kinetic",
                    help="kinetic=真实飞控动力学；kinematic=set_transform 沿航线搬；"
                         "virtual=完全不碰物理，位置与探测全用数学算（最稳，画面里飞机不动）")
-    g.add_argument("--uav-route", choices=("sweep", "enemies", "strips"),
+    g.add_argument("--uav-route", choices=("sweep", "enemies", "strips", "goto"),
                    default="sweep",
                    help="sweep=牛耕式覆盖扫描（默认，敌人位置未知时的正确做法）；"
                         "enemies=按已知敌人位置排航线；"
+                        "goto=直接飞向 --goto 给出的坐标（侦察/打击指定点）；"
                         "strips=game.json 里的固定条带图案")
+    g.add_argument("--goto", default=None,
+                   help="--uav-route goto 的目标坐标，形如 \"x,y;x,y;x,y\"（世界坐标，m）。"
+                        "可以只给 1~2 个点，其余飞机就近分配；也可以每架给一个")
+    g.add_argument("--goto-z", type=float, default=None,
+                   help="goto 模式的到达高度（默认用 --uav-altitude）")
+    g.add_argument("--goto-tol", type=float, default=8.0,
+                   help="goto 判到点的水平误差阈值 m（默认8）")
+    g.add_argument("--attack", dest="attack", action="store_true", default=True,
+                   help="（默认开启）无人车到达后自动开火消灭附近敌人")
+    g.add_argument("--no-attack", dest="attack", action="store_false",
+                   help="只开车不打仗（调试用）")
+    g.add_argument("--ugv-waves", dest="ugv_waves", action="store_true", default=True,
+                   help="（默认开启）车打完一批后，若还有敌人就再派一批")
+    g.add_argument("--attack-range", type=float, default=120.0,
+                   help="无人车开火的最大距离 m（默认120）")
+    g.add_argument("--roi-with-markers", action="store_true",
+                   help="任务区把已知敌人也算进包围盒（演示用；真实任务不需要知道敌人位置）")
+    g.add_argument("--shot-at", type=float, default=0.0,
+                   help="运行到第 N 秒自动保存一张小地图 PNG 到 WorkPlace/figs/")
+    g.add_argument("--area", default="auto",
+                   help="【统一区域】侦查区域 = 小地图局部区域 = \"x0,y0,x1,y1\"（世界坐标 m）。"
+                        "填 auto 则自动算。用这一个参数保证『扫的就是小地图上看到的那一块』，"
+                        "不会再出现『小地图范围比扫描范围大、敌人扫不到』")
     g.add_argument("--sweep-radius", type=float, default=300.0,
                    help="覆盖扫描的探测半径 R（默认300），条带间距自动取 2R")
     g.add_argument("--sweep-half", type=float, default=None,
@@ -493,6 +603,10 @@ def parse_args():
                    help="扫描区域 x0,y0,x1,y1；填 auto 表示"
                         "以无人机出生点为中心、半边长 = R+150 m 的方块"
                         "（演示用，比整张任务区快得多）；默认取 game.json 任务区")
+    g.add_argument("--uav-strike", action="store_true", default=False,
+                   help="（默认开启）发现足够目标后，把三架无人机也改飞过去（一机一个目标）")
+    g.add_argument("--no-uav-strike", dest="uav_strike", action="store_false", default=False,
+                   help="只派无人车，无人机继续悬停")
     g.add_argument("--uav-per-target", type=int, default=2,
                    help="每架机串几个目标点（默认2）")
     g.add_argument("--keep-driver", action="store_true",
@@ -503,9 +617,13 @@ def parse_args():
     g.add_argument("--uav-speed", type=float, default=None,
                    help="运动学/虚拟模式的巡航速度 m/s（默认15；演示可调快，如 25）")
     g.add_argument("--uav-altitude", type=float, default=250.0,
-                   help="运动学模式下的飞行高度 m（默认250）。"
-                        "别调太低：100 m 会被楼挡住，撞楼掉血归零后 actor 失效，"
-                        "探测全部失效（表现为机高显示 ? 且一个目标都发现不了）")
+                   help="飞行高度 m（默认250，kinetic/kinematic/virtual 都生效）。"
+                        "注意 SITL 爬升率约 2.5 m/s，250 m 从地面起飞要约 100 s；"
+                        "演示建议 120~150。别低于 100 m：会被楼挡住，撞楼掉血归零后 actor 失效")
+    g.add_argument("--land", dest="land", action="store_true", default=True,
+                   help="（默认开启）收尾时把三架机降回地面再退出")
+    g.add_argument("--no-land", dest="land", action="store_false",
+                   help="收尾时让飞机停在巡航高度（保持画面）")
 
     g = ap.add_argument_group("显示")
     g.add_argument("--no-view", action="store_true", help="不弹小地图（只跑逻辑）")
@@ -540,12 +658,13 @@ def parse_args():
                         "避免卡在个别车一直 drive 上不结束")
     g.add_argument("--console-every", type=float, default=5.0,
                    help="控制台心跳间隔秒数（默认5；0=关闭）")
-    g.add_argument("--takeoff-timeout", type=float, default=60.0,
-                   help="无人机起飞超时秒数（默认60；超时会大声提示飞控驱动问题）")
+    g.add_argument("--takeoff-timeout", type=float, default=240.0,
+                   help="起飞阶段告警秒数（默认240）。SITL 上电要先等 GPS home + EKF 收敛"
+                        "才 arm（实测 20~60 s），这段时间飞机不动是正常的，不是飞控坏了")
     g.add_argument("--ignore-driver-check", action="store_true",
                    help="跳过飞控驱动进程检查")
 
-    value_opts = ("--scene", "--node-nos", "--focus", "--sweep-region")
+    value_opts = ("--scene", "--node-nos", "--focus", "--sweep-region", "--goto", "--area")
     args = ap.parse_args(_fix_leading_dash(sys.argv[1:], value_opts))
     return args
 
@@ -555,6 +674,12 @@ def parse_args():
 # ---------------------------------------------------------------------------
 def main():
     args = parse_args()
+
+    # 飞行高度对 kinetic/kinematic/virtual 三种模式统一生效
+    try:
+        cu.set_altitude(args.uav_altitude)
+    except cu.SafetyError as e:
+        raise SystemExit("--uav-altitude 不合法：%s" % e)
 
     # ---------------- 连接 ----------------
     # 注意：SDK 的 SwarmAEClient.__init__ 会自己解析 sys.argv（只认 -i/-p/-s/-n/-t），
@@ -621,6 +746,12 @@ def main():
 
     uav_vehicles = build_uav_vehicles(client, node_nos, logger)
     planner = cu.SafePlanner(cu.read_json(game_json))
+    if args.uav_mode == "kinetic" and not getattr(args, "no_spread", False):
+        # 三架机出生点只隔 2~3 m，直接一起爬升会互相撞；先在同高度水平错开
+        try:
+            cu.spread_uavs(uav_vehicles, logger)
+        except Exception as e:
+            log("无人机散开失败（继续按原位置起飞）：%r" % (e,))
     starts = dict((n, uav_vehicles[n].position()) for n in cu.UAV_NAMES)
 
     # ---- 先算任务区域（扫描区域与局部地图共用同一个矩形）----
@@ -631,13 +762,39 @@ def main():
         for v in ugvs:
             st = v.get_state().pose_
             ugv_pos.append((float(st.x_), float(st.y_)))
-        search_roi = compute_search_roi(uav_pos, ugv_pos, markers, args)
+        # 【真实任务】无人机不知道敌人位置：任务区只按"出生点"算，不把 markers 算进去。
+        # 想看"按敌情撑开"的旧行为，加 --roi-with-markers。
+        roi_markers = markers if getattr(args, "roi_with_markers", False) else []
+        search_roi = compute_search_roi(uav_pos, ugv_pos, roi_markers, args)
         if search_roi:
             log("任务区域：中心 (%.0f, %.0f)  ±%.0f m（%.0f×%.0f）"
                 % (search_roi[0], search_roi[1], search_roi[2],
                    2 * search_roi[2], 2 * search_roi[2]))
     except Exception as e:
         log("任务区域计算失败（用出生点默认范围）: %r" % (e,))
+
+    # ---- 统一区域：--area 同时决定「扫描区域」和「小地图区域」 ----
+    # 以前这两块是各算各的：小地图 ROII 由 bbox 撑大、扫描区域另给，
+    # 结果小地图比实际扫描范围大，地图上看到的敌人根本扫不到。
+    if args.area and str(args.area).strip().lower() != "auto":
+        try:
+            x0, y0, x1, y1 = [float(v) for v in
+                              str(args.area).replace("，", ",").split(",")[:4]]
+        except Exception:
+            raise SystemExit("--area 格式应为 x0,y0,x1,y1（世界坐标米）")
+        if x1 <= x0 or y1 <= y0:
+            raise SystemExit("--area 要求 x1>x0 且 y1>y0")
+        # 把区域向里收 35 m：任务区常常正好压在 arena 边界上，'边上的整条扫描线'会因为
+        # 安全余量被判为不可用 → 整块被判 dead → 触发"全局条带"回退，三机互相重复扫描。
+        INSET = 35.0
+        x0, y0, x1, y1 = x0 + INSET, y0 + INSET, x1 - INSET, y1 - INSET
+        half = max(x1 - x0, y1 - y0) / 2.0
+        search_roi = ((x0 + x1) / 2.0, (y0 + y1) / 2.0, half)
+        args.sweep_region = "%.1f,%.1f,%.1f,%.1f" % (x0, y0, x1, y1)
+        args.sweep_half = half
+        log("统一区域：x[%.0f, %.0f] y[%.0f, %.0f]（%.0f×%.0f m）"
+            " —— 扫描区域 = 小地图区域"
+            % (x0, x1, y0, y1, x1 - x0, y1 - y0))
 
     routes = None
     if args.uav_route == "sweep":
@@ -689,6 +846,20 @@ def main():
         except Exception as e:
             log("生成扫描航线失败，退回敌人位置航线：%r" % (e,))
             routes = None
+
+    if args.uav_route == "goto":
+        pts = parse_goto_points(args.goto)
+        if not pts:
+            raise SystemExit('--uav-route goto 需要 --goto "x,y;x,y" 形式的目标坐标')
+        if args.goto_tol:
+            cu.set_waypoint_tol(args.goto_tol)
+        routes = build_goto_routes(planner, starts, pts)
+        if routes is None:
+            raise SystemExit("所有 goto 目标都落在禁飞区/安全余量内，放弃本次飞行")
+        log("航线 = 直奔给定坐标（%d 个目标点，到点判定 %.0f m）" % (len(pts), cu.WAYPOINT_TOL))
+        for nm in cu.UAV_NAMES:
+            log("  %s -> (%.1f, %.1f) 高度 %.0f m"
+                % (nm, routes[nm][-1][0], routes[nm][-1][1], cu.ALTITUDE))
 
     if routes is None and args.uav_route == "enemies":
         try:
@@ -744,6 +915,34 @@ def main():
     else:
         runner = UavRunner(uav_vehicles, planner, routes, logger,
                            use_default=False)
+    # ---- 航段绕行：连接段穿禁飞区时，用规划器的 route() 补绕行点 ----
+    # 牛耕只保证"扫描线自身"安全；两条线之间的斜向连接段可能直接穿过禁飞区，
+    # 实测 UAV2 就是这样越界后触发安全边界的。
+    try:
+        fixed = {}
+        inserted = 0
+        for _n, _pts in routes.items():
+            _out = [_pts[0]]
+            for _i in range(1, len(_pts)):
+                _a, _b = _out[-1], _pts[_i]
+                if not planner.segment_safe(_a, _b, planning=True):
+                    try:
+                        _mid = planner.route(_a, _b)
+                    except Exception:
+                        _mid = None
+                    if _mid and len(_mid) > 2:
+                        for _m in _mid[1:-1]:
+                            _out.append((float(_m[0]), float(_m[1])))
+                            inserted += 1
+                        log("%s 连接段穿禁飞区，插入 %d 个绕行点" % (_n, len(_mid) - 2))
+                _out.append(_b)
+            fixed[_n] = _out
+        if inserted:
+            log("绕行点合计 %d 个" % inserted)
+        routes = fixed
+    except Exception as _e:
+        log("航段绕行处理失败（继续用原航线）：%r" % (_e,))
+
     log("无人机航线已规划：%s" % dict((n, len(routes[n])) for n in cu.UAV_NAMES))
 
     # ---------------- 无人车路网 ----------------
@@ -815,6 +1014,10 @@ def main():
         view = lt.LiveView(scene, env, names, types, zoom=320.0, focus=focus,
                            title="full_mission - recon -> strike", roi=roi)
         view.set_markers(markers)
+        try:
+            view.scan_radius_px = float(args.sweep_radius)
+        except Exception:
+            pass
         # 把本轮真正的搜索区域画出来（青绿实线），与场景边界区分
         if search_roi is not None:
             view.set_search_area(*search_roi)
@@ -832,9 +1035,22 @@ def main():
     last_view = 0.0
     frame = 0
     uav_ok = True
+    uav_strike_done = False
+    uav_strike_diag = False
+    shot_done = False
+    last_attack = 0.0
+    last_contact = 0.0
+    attacked_pts = []
+    ugv_trails = dict((n, []) for n in UGV_NAMES)
+    killed_pts = []
+    prev_uav_pos = None
+    last_progress = time.time()
+    engaged_pts = []
+    last_seen = []
     exit_reason = "运行到 --duration 上限"
 
-    log("开始：无人机起飞侦查（Z=250，15 m/s）")
+    log("开始：无人机起飞侦查（Z=%.0f，%.0f m/s，模式 %s）"
+        % (cu.ALTITUDE, cu.CRUISE_SPEED, args.uav_mode))
     last_beat = 0.0
     takeoff_warned = False
 
@@ -882,13 +1098,15 @@ def main():
                 except Exception:
                     zs = "?"
                 log("=" * 62)
-                log("!! 无人机 %.0fs 仍停在起飞阶段，高度 %s（目标 %.0f m）"
+                log(".. 无人机 %.0fs 仍在起飞阶段，高度 %s（目标 %.0f m）"
                     % (el, zs, cu.ALTITUDE))
-                log("   命令下发返回成功、但高度一点没变 —— 基本可以确定是飞控驱动的问题。")
-                log("   " + DRIVER_HINT)
-                log("   日志: %s" % log_path)
+                log("   先别急着怀疑飞控：SITL 上电后要先等 GPS home + EKF 收敛才 arm，")
+                log("   实测 20~60 s，这段时间命令返回 200 但飞机就是不动，属正常。")
+                log("   判断依据在驱动日志里（bin/driver/log/*.log）：出现 'Arming motors' 就说明")
+                log("   已经起飞；出现 'PreArm: GPS: waiting for home' 就再等一会。")
+                log("   若超过 4 分钟仍为 0 位移，再查：" + DRIVER_HINT)
                 log("=" * 62)
-            if takeoff_warned and uav_ok and el > 2.0 * args.takeoff_timeout \
+            if takeoff_warned and uav_ok and el > 3.0 * args.takeoff_timeout \
                     and runner.all_takeoff():
                 log("无人机长时间无法起飞，停止飞行（若已有目标，后续流程照常）")
                 uav_ok = False
@@ -908,9 +1126,27 @@ def main():
 
             # ---- 2. 同步"已发现"到小地图 ----
             enemies = runner.enemies()
-            if enemies and markers:
+            # 【修正】飞机还在爬升时就别"官宣发现目标"：SDK 在地面也能报出附近敌人，
+            # 结果出现"无人机还在起飞、无人车已经出发"的怪象。
+            airborne = _all_uavs_at_altitude(uav_vehicles, tol=30.0)
+            if enemies and markers and airborne:
                 det = [{"x": p[0], "y": p[1]} for p in enemies]
-                found, _ = lt.match_detections(det, markers, tol=args.match_tol)
+                # 【修正】只用 20 m 阈值匹配经常一个都对不上（SDK 报回的坐标
+                # 与 targets.json 有偏差），结果"任务已经发现 3 个"但小地图还是空心圈。
+                # 这里放宽到 80 m，并且对"没匹配上的探测"退化为"标记最近的未发现目标"，
+                # 保证小地图计数与任务计数一致。
+                found, _ = lt.match_detections(det, markers, tol=max(args.match_tol, 80.0))
+                if not found:
+                    for d in det:
+                        best_i, best_d = -1, None
+                        for i, m in enumerate(markers):
+                            if m.discovered or m.extra:
+                                continue
+                            dd = math.hypot(m.x - d["x"], m.y - d["y"])
+                            if best_d is None or dd < best_d:
+                                best_i, best_d = i, dd
+                        if best_i >= 0:
+                            found.add(best_i)
                 changed = False
                 for i in found:
                     if not markers[i].discovered:
@@ -919,19 +1155,87 @@ def main():
                         log("发现目标 #%d %s (%.1f, %.1f)"
                             % (i, markers[i].cn, markers[i].x, markers[i].y))
                 if changed and view is not None:
-                    view.set_markers(markers)
+                    view.known_override = len(enemies)
+            view.discovered_override = len(enemies)
+            view.set_markers(markers)
 
-            # ---- 3. 是否派出无人车 ----
-            if (not args.no_ugv) and not ugv_agents:
-                pool = list(enemies)
-                ready = len(pool) >= args.min_targets
+            # 记录每台车走过的点，供"重复路径代价"使用（每 15 m 一个采样点）
+            try:
+                for _i, _v in enumerate(ugvs):
+                    _p = _v.get_state().pose_
+                    _tr = ugv_trails[UGV_NAMES[_i]]
+                    if (not _tr) or math.hypot(_p.x_ - _tr[-1][0], _p.y_ - _tr[-1][1]) > 15.0:
+                        _tr.append((float(_p.x_), float(_p.y_)))
+                        if len(_tr) > 400:
+                            del _tr[0:100]
+            except Exception:
+                pass
+            # 【进度判定】只要还有无人机在移动（>3 m），就认为任务在推进，不触发"侦查超时"
+            try:
+                _cur = [uav_vehicles[n].position() for n in cu.UAV_NAMES]
+                if prev_uav_pos is None or any(
+                        math.hypot(c[0] - p[0], c[1] - p[1]) > 0.05
+                        for c, p in zip(_cur, prev_uav_pos)):
+                    last_progress = t0
+                prev_uav_pos = _cur
+            except Exception:
+                pass
+            # ---- 3. 无人车持续分配（一辆打完立刻接下一个目标）----
+            # 结束的车把车辆释放出来，供下一个目标使用
+            for a in list(ugv_agents):
+                if a.status in ("arrived", "no_path", "stuck", "max_replan"):
+                    ugv_agents.remove(a)
+                    continue
+                # 【新增】目标已经被打死了就立即就地释放，不必再开到那个点
+                if any(math.hypot(a.target[0] - q[0], a.target[1] - q[1]) < 40.0
+                       for q in killed_pts):
+                    try:
+                        a.finish("arrived", "目标已被消灭，就地待命")
+                    except Exception:
+                        pass
+                    uw = ugv_targets.pop(a.name, None)   # 清掉残留目标，避免小地图显示假目标
+                    log("%s 的目标已被消灭，就地转为空闲" % a.name)
+                    ugv_agents.remove(a)
+            free_idx = [i for i, n in enumerate(UGV_NAMES)
+                        if all(a.name != n for a in ugv_agents)]
+            try:
+                scanned = all(p == "hold" for p in runner.phases_snapshot().values())
+            except Exception:
+                scanned = False
+            if (not args.no_ugv) and free_idx:
+                # 【修正】候选池只排除"已打死"和"正在被某车打"的点。
+                # 原来用 attacked_pts 永久排除：车派过之后（哪怕卡住没打成），这个敌人
+                # 就再也不会被派第二次 —— 实测出现"已发现 5、只打死 3、车全部待命"。
+                busy_now = [a.target for a in ugv_agents]
+                pool = [p for p in enemies
+                        if all(math.hypot(p[0] - q[0], p[1] - q[1]) > 40.0
+                               for q in killed_pts)
+                        and all(math.hypot(p[0] - q[0], p[1] - q[1]) > 40.0
+                                for q in busy_now)]
+                # 【未来更优解】若某辆"还在路上"的车，目标离该敌人很近（<150 m），先别把这个
+                # 敌人派给远处的空闲车——等那辆车到了顺手打掉，避免"A 车跑远路、B 车就在旁边"。
+                if pool and ugv_agents:
+                    busy_targets = [a.target for a in ugv_agents]
+                    keep = [e for e in pool
+                            if not any(math.hypot(t[0] - e[0], t[1] - e[1]) < 150.0
+                                       for t in busy_targets)]
+                    if keep:
+                        pool = keep
+                # 【逐敌派车】只要有"未分配敌人 + 空闲车 + 飞机已在空中"就派，
+                # 不再等凑够 3 个、也不等扫描结束；否则一辆车打完要干等到扫完才能接下一个。
+                ready = bool(pool) and _all_uavs_at_altitude(uav_vehicles, tol=30.0)
 
                 # 无人机全死了/全飞完了，就别再空等 —— 有几个目标派几个
                 if (not ready) and len(pool) > 0:
                     try:
-                        uav_done = runner.all_searching() or (
-                            getattr(runner, "dead", set())
-                            and len(getattr(runner, "dead", set())) >= len(cu.UAV_NAMES))
+                        # 【修正】all_searching() 的含义是"三架都在空中"(cruise/hold)，
+                        # 不是"扫完了"。原写法导致起飞阶段就判定"没更多目标"，
+                        # 一发现 1 个敌人就急着派车。现在要求三架都进入 hold 才算扫完。
+                        uav_done = runner.all_searching() and all(
+                            p == "hold" for p in runner.phases_snapshot().values())
+                        dead = getattr(runner, "dead", set())
+                        if dead and len(dead) >= len(cu.UAV_NAMES):
+                            uav_done = True
                     except Exception:
                         uav_done = False
                     if uav_done:
@@ -939,7 +1243,11 @@ def main():
                             "（不足 --min-targets %d）" % (len(pool), args.min_targets))
                         ready = True
 
-                if not ready and el > args.recon_timeout:
+                # 【改】超时判据 = 连续 recon_timeout 秒"既没发现新目标、无人机也没动"
+                # 否则长航时巡查（半图要 10+ 分钟）会被误判成卡死
+                if ((not ready) and (not pool) and (not scanned)
+                        and (t0 - last_progress) > args.recon_timeout
+                        and runner.all_takeoff()):   # 只有"从没起飞成功"才判超时
                     if args.use_default_enemies:
                         log("侦查超时（%.0fs），补入组员的预设目标点" % el)
                         for p in cu.DEFAULT_ENEMIES:
@@ -959,12 +1267,29 @@ def main():
                     if not pts:
                         log("目标都吸附不到路网，暂不派车")
                     else:
-                        starts_xy = [(v.get_state().pose_.x_,
-                                      v.get_state().pose_.y_) for v in ugvs]
-                        chosen = assign_targets(pts, starts_xy, len(UGV_NAMES))
-                        for i, name in enumerate(UGV_NAMES):
-                            ugv_targets[name] = chosen[i]
-                            a = ugv.UgvAgent(ugvs[i], name, chosen[i],
+                        starts_xy = [(ugvs[k].get_state().pose_.x_,
+                                      ugvs[k].get_state().pose_.y_) for k in free_idx]
+                        headings = [ugvs[k].get_state().pose_.theta_ for k in free_idx]
+                        chosen = assign_targets(pts, starts_xy, len(free_idx),
+                                                trails=[ugv_trails[UGV_NAMES[k]] for k in free_idx],
+                                                headings=headings)
+                        # 【修正】目标点少于车数时，不要几台车挤同一个点（会互相挡死）。
+                        # 去重后"有几处目标就派几台车"，剩下的车原地待命。
+                        uniq = []
+                        for p in chosen:
+                            if all(math.hypot(p[0] - q[0], p[1] - q[1]) > 25.0
+                                   for q in uniq):
+                                uniq.append(p)
+                        if len(uniq) < len(chosen):
+                            log("目标点去重：%d -> %d 处，只派 %d 台车（其余待命）"
+                                % (len(chosen), len(uniq), len(uniq)))
+                        for slot, k in enumerate(free_idx):
+                            if slot >= len(uniq):
+                                break
+                            name = UGV_NAMES[k]
+                            ugv_targets[name] = uniq[slot]
+                            attacked_pts.append(uniq[slot])
+                            a = ugv.UgvAgent(ugvs[k], name, uniq[slot],
                                              binary, raw_bin, ugv_scale, ugv_off)
                             a.start()
                             ugv_agents.append(a)
@@ -983,6 +1308,40 @@ def main():
                         if len(pts) < len(UGV_NAMES):
                             log("注意：只有 %d 个可用目标点，部分无人车会被派到同一处"
                                 % len(pts))
+                        # 无人机改飞由 3b 段统一处理（与是否派车无关）
+
+            # ---- 3b. 无人机改飞已发现目标（与派车无关，单独触发）----
+            if args.uav_strike and args.uav_mode == "kinetic" and not uav_strike_done:
+                gate_num = len(enemies) >= args.min_targets
+                gate_alt = _all_uavs_at_altitude(uav_vehicles) or runner.all_searching()
+                if not uav_strike_diag:
+                    uav_strike_diag = True
+                    log("[strike] 门限诊断：已发现=%d（需 %d） 全部到巡航高度=%s 阶段=%s"
+                        % (len(enemies), args.min_targets, gate_alt,
+                           runner.phases_snapshot()))
+                if gate_num and gate_alt:
+                    try:
+                        # 一个目标只派一架机：目标少于飞机时，其余飞机继续自己的巡查，
+                        # 绝不能三架挤同一个点（实测到点瞬间互相撞、速度飙到 23 m/s）。
+                        remaining = [tuple(p[:2]) for p in enemies]
+                        plan = {}
+                        for name in cu.UAV_NAMES:
+                            if not remaining:
+                                break
+                            here = uav_vehicles[name].position()
+                            best = min(remaining,
+                                       key=lambda p: math.hypot(p[0] - here[0],
+                                                                p[1] - here[1]))
+                            remaining.remove(best)
+                            plan[name] = [best]
+                        if plan:
+                            cu.request_retarget(plan)
+                            log("无人机改飞目标：%s" % dict(
+                                (n, (round(p[0][0], 1), round(p[0][1], 1)))
+                                for n, p in plan.items()))
+                        uav_strike_done = True
+                    except Exception as e:
+                        log("无人机改飞失败：%r" % (e,))
 
             # ---- 4. 无人车一帧（含会车让行）----
             if ugv_agents:
@@ -1000,6 +1359,11 @@ def main():
                     for i in range(len(ugv_agents)):
                         for j in range(i + 1, len(ugv_agents)):
                             a, b = ugv_agents[i], ugv_agents[j]
+                            # 【修正】已经到点/上报的车不会再动，别让还在跑的车给它让行。
+                            # 原来不管对方状态，只要距离 < YIELD_GAP 就判让行，
+                            # 实测 UGV3 一直给已经停在旁边的 UGV2 让行，永远走不了。
+                            if a.status != "drive" or b.status != "drive":
+                                continue
                             if a.name not in pos or b.name not in pos:
                                 continue
                             d = math.hypot(pos[a.name][0] - pos[b.name][0],
@@ -1080,15 +1444,141 @@ def main():
                     len(enemies),
                     " ".join(status) if status else "等待侦查")
                 view.update(snap, el, extra)
+                # 到点自动存一张小地图（不用手按 s，也不用屏幕截图）
+                if args.shot_at > 0 and el >= args.shot_at and not shot_done:
+                    try:
+                        path = view.save_snapshot()
+                        shot_done = True
+                        log("已保存小地图快照: %s" % path)
+                    except Exception as e:
+                        shot_done = True
+                        log("小地图快照保存失败: %r" % (e,))
                 last_view = t0
 
+            # ---- 5a. 判定"已消灭"：打过、且现在探测不到了 ----
+            if engaged_pts and markers and last_seen:
+                alive = list(last_seen)
+                still = []
+                for q in engaged_pts:
+                    near = any(math.hypot(q[0] - a0, q[1] - a1) < 40.0
+                               for (a0, a1) in alive)
+                    if near:
+                        still.append(q)
+                    else:
+                        for m in markers:
+                            if (not m.extra
+                                    and math.hypot(m.x - q[0], m.y - q[1]) < 40.0):
+                                m.extra = True
+                                log("已消灭：%s (%.1f, %.1f)" % (m.cn, m.x, m.y))
+                engaged_pts = still
+                if view is not None:
+                    view.set_markers(markers)
+            # ---- 5b. 到点的无人车开火 ----
+            if args.attack and ugv_agents and t0 - last_attack > 2.0:
+                last_attack = t0
+                seen_pts = []
+                for a in ugv_agents:
+                    if a.status not in ("arrived", "drive", "reverse"):
+                        continue
+                    try:
+                        ob = a.ugv.detect_fun()
+                    except Exception:
+                        continue
+                    try:
+                        for kk in range(len(list(getattr(ob, "Type", []) or []))):
+                            seen_pts.append((ob.x_ue[kk], ob.y_ue[kk]))
+                    except Exception:
+                        pass
+                    types = list(getattr(ob, "Type", []) or [])
+                    if not types:
+                        continue
+                    # 【重要】detect_fun 会把"自己人"也算成障碍物：HRT-M10 是我们自己的无人机、
+                    # RaiderBuggy 是队友车。不过滤的话车会对着头顶的无人机打（实测就是这个现象）。
+                    HOSTILE = ("Soldier", "Stryker", "Barricade_BP", "Pillbox", "Building")
+                    cand = [k for k in range(len(types)) if types[k] in HOSTILE]
+                    # 障碍物（沙袋/工事/建筑）挡路时，按"离车当前距离"选，不是按目标点距离
+                    try:
+                        _here = a.ugv.get_state().pose_
+                        _hx, _hy = float(_here.x_), float(_here.y_)
+                    except Exception:
+                        _hx = _hy = None
+                    if not cand:
+                        continue
+                    best, bd = -1, None
+                    for k in cand:
+                        try:
+                            if (types[k] in ("Barricade_BP", "Pillbox", "Building")
+                                    and _hx is not None):
+                                d = math.hypot(ob.x_ue[k] - _hx, ob.y_ue[k] - _hy)
+                            else:
+                                d = math.hypot(ob.x_ue[k] - a.target[0],
+                                               ob.y_ue[k] - a.target[1])
+                        except Exception:
+                            continue
+                        if bd is None or d < bd:
+                            best, bd = k, d
+                    if best < 0 or bd is None or bd > args.attack_range:
+                        continue
+                    try:
+                        a.ugv.set_weapon(ob, best)
+                        last_contact = t0
+                        # 记下"打过这个点"，等它从探测列表消失再判死
+                        # （开火当帧血量往往还没归零，原来的判据几乎永远不成立）
+                        engaged_pts.append((ob.x_ue[best], ob.y_ue[best]))
+                        try:
+                            hp = list(getattr(ob, "Health", []) or [])
+                            if best < len(hp) and float(hp[best]) <= 0:
+                                for m in markers:
+                                    if (not m.extra
+                                            and math.hypot(m.x - ob.x_ue[best],
+                                                           m.y - ob.y_ue[best]) < 40.0):
+                                        m.extra = True
+                                if view is not None:
+                                    view.set_markers(markers)
+                        except Exception:
+                            pass
+                        log("%s 开火 -> %s (%.1f, %.1f) 距离 %.0f m"
+                            % (a.name, types[best], ob.x_ue[best], ob.y_ue[best], bd))
+                    except Exception as e:
+                        log("%s 开火失败：%r" % (a.name, e))
+
+                last_seen = seen_pts     # 供 5a 判死使用
+                if engaged_pts:
+                    alive = list(last_seen)
+                    still2 = []
+                    for q in engaged_pts:
+                        if any(math.hypot(q[0] - a0, q[1] - a1) < 40.0 for (a0, a1) in alive):
+                            still2.append(q)
+                        else:
+                            for m in markers:
+                                if (not m.extra and math.hypot(m.x - q[0], m.y - q[1]) < 40.0):
+                                    m.extra = True
+                                    killed_pts.append((m.x, m.y))
+                                    log("已消灭：%s (%.1f, %.1f)" % (m.cn, m.x, m.y))
+                    engaged_pts = still2
+                    if view is not None:
+                        view.set_markers(markers)
             # ---- 6. 结束判定 ----
+            # 【新增】只要"已发现的敌人全部被打死"，就不必再等扫描收尾，直接结束。
+            all_killed = bool(enemies) and all(
+                any(math.hypot(p[0] - q[0], p[1] - q[1]) < 80.0 for q in killed_pts)
+                for p in enemies)
+            if all_killed and (t0 - last_contact) > 5.0:
+                exit_reason = ("任务完成：已发现的 %d 个敌人全部消灭"
+                               "（最近一次交火 %.0f s 前，未等扫描收尾）"
+                               % (len(enemies), t0 - last_contact))
+                break
             if ugv_agents and all(a.status in ("arrived", "no_path", "stuck",
                                                "max_replan") for a in ugv_agents):
-                exit_reason = "无人车全部结束（到达或上报）"
+                ugv_idle = True
+            else:
+                ugv_idle = False
+            uav_scanned = all(p in ("hold", "dead")
+                              for p in runner.phases_snapshot().values())
+            if ugv_idle and uav_scanned and (t0 - last_contact) > 10.0:
+                exit_reason = ("任务完成：全区域扫描完毕，已发现目标均已消灭"
+                               "（最近一次交火 %.0f s 前）" % (t0 - last_contact))
                 break
-            # 派车后跑太久就收尾：个别车会一直 drive（绕路/被堵），
-            # 不设上限的话整轮会拖到 --duration（900 s），看起来像卡死。
             if ugv_agents and args.ugv_deadline > 0:
                 ran = t0 - (ugv_started_at or t0)
                 if ran > args.ugv_deadline:
@@ -1112,10 +1602,22 @@ def main():
         traceback.print_exc()
     finally:
         log("结束原因：%s" % exit_reason)
+        # 先停掉控制线程（它退出时会发一次"悬停在巡航高度"），再降落；
+        # 顺序反过来的话，悬停指令会把刚降下去的飞机又拉回 250 m。
         try:
             runner.stop()
         except Exception:
             pass
+        if args.land and args.uav_mode == "kinetic" and uav_ok:
+            try:
+                time.sleep(1.5)
+                log("开始降落（Z %.0f -> 低空 %.0f m）..." % (cu.ALTITUDE, cu.SAFE_LAND_ALT))
+                if cu.land_uavs(uav_vehicles, logger):
+                    log("三架机已降到安全低空并稳住")
+                else:
+                    log("降落未在超时内完成，请看无人机日志")
+            except Exception as e:
+                log("降落失败：%r" % (e,))
         for v in ugvs:
             try:
                 v.apply_control(0.0, 0.0, 1.0, False)

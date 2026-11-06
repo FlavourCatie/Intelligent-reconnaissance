@@ -27,19 +27,19 @@
         "type": "vehicle.hrt.m10",
         "vehicles": [
             {
-                "position": "-1875.2, -521.9, 100",
+                "position": "-1875.2, -570.0, 100",
                 "rotation": "0,0,0",
                 "teamId": "1",
                 "detectRadius": 30000
             },
             {
-                "position": "-1875.2, -519.4, 100",
+                "position": "-1830.0, -495.0, 100",
                 "rotation": "0,0,0",
                 "teamId": "1",
                 "detectRadius": 30000
             },
             {
-                "position": "-1875.2, -516.5, 100",
+                "position": "-1875.2, -450.0, 100",
                 "rotation": "0,0,0",
                 "teamId": "1",
                 "detectRadius": 30000
