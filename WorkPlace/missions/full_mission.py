@@ -1270,6 +1270,8 @@ def main():
     last_watchdog = 0.0
     last_dbg = 0.0
     ugv_stuck = {}
+    ugv_cooldown = {}   # P3：释放后的改派冷却，避免刚停稳就被重新打舵
+    last_cool_log = 0.0
     prev_uav_pos = None
     last_progress = time.time()
     engaged_pts = []
@@ -1447,6 +1449,7 @@ def main():
             for a in list(ugv_agents):
                 if a.status in ("arrived", "no_path", "stuck", "max_replan"):
                     ugv_agents.remove(a)
+                    ugv_cooldown[a.name] = t0
                     continue
                 # 【新增】目标已经被打死了就立即就地释放，不必再开到那个点。
                 # 判定收紧到 12 m：之前 40 m 太宽，1 号车打死一个敌人时，
@@ -1460,6 +1463,7 @@ def main():
                     uw = ugv_targets.pop(a.name, None)   # 清掉残留目标，避免小地图显示假目标
                     log("%s 的目标已被消灭，就地转为空闲" % a.name)
                     ugv_agents.remove(a)
+                    ugv_cooldown[a.name] = t0
             # ---- 调试：每 5 s 打印三车状态（定位卡死用）----
             if tactics is not None and (t0 - last_dbg) > 5.0:
                 last_dbg = t0
@@ -1477,6 +1481,15 @@ def main():
                     log("[状态] " + " | ".join(_dbg))
             free_idx = [i for i, n in enumerate(UGV_NAMES)
                         if all(a.name != n for a in ugv_agents)]
+            # P3：刚被释放的车先冷却 20 s 再接新任务（避免刚停稳就被重新打舵 -> 抽搐）
+            _cool = [k for k, n in enumerate(UGV_NAMES)
+                     if k in free_idx and (t0 - ugv_cooldown.get(n, -999.0)) < 20.0]
+            if _cool:
+                free_idx = [k for k in free_idx if k not in _cool]
+                if t0 - last_cool_log > 10.0:
+                    last_cool_log = t0
+                    log("冷却中（%.0f s 后可再派）：%s"
+                        % (20.0, ",".join(UGV_NAMES[k] for k in _cool)))
             # ---- 看门狗：空闲且掉到任务区外的车，拉回路网（防止整轮卡死）----
             if tactics is not None and (t0 - last_watchdog) > 3.0:
                 last_watchdog = t0
