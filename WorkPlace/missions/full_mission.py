@@ -273,7 +273,7 @@ def tactics_decide(tac, now, free_idx, pool, ugvs, uav_vehicles, radius,
     # 3) 敌人（先用普通目标占位，路口阵位由 P2 的 slots 模块接管）
     enemies = []
     _mask = _tactics_mask()
-    _TACTICS_ENCIRCLE.clear()   # 每轮重建，避免已消灭目标残留黄圈
+    # 注意：不要整体 clear——每轮只有"未分配"的敌人会重新登记，clear 会把正在合围的条目也抹掉，
     for i, p in enumerate(pool):
         # 只处理任务区内的敌人：区外目标会被路网裁剪挡住，派车必卡死
         if not tac.zone.contains(float(p[0]), float(p[1]), margin=20.0):
@@ -1423,6 +1423,14 @@ def main():
                     view.known_override = len(enemies)
             view.discovered_override = len(enemies)
             view.set_markers(markers)
+            # 只保留还活着的合围目标（30 m 内有已击杀点则移除）
+            try:
+                for _k in list(_TACTICS_ENCIRCLE.keys()):
+                    _v = _TACTICS_ENCIRCLE[_k]
+                    if any(math.hypot(_v[0] - q[0], _v[1] - q[1]) < 30.0 for q in killed_pts):
+                        _TACTICS_ENCIRCLE.pop(_k, None)
+            except Exception:
+                pass
             if _TACTICS_ENCIRCLE:
                 try:
                     view.set_encircle([(v[0], v[1]) for v in _TACTICS_ENCIRCLE.values() if v[2] >= 2])

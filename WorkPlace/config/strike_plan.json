@@ -7,27 +7,27 @@
       "gap_branch": null,
       "slots": [
         {
-          "vid": "UGV1",
+          "vid": "UGV2",
           "branch": "W",
           "pos": [
             -408.5,
             -625.3
           ],
           "hold": null,
-          "eta": 20.5
+          "eta": 40.6
         }
       ],
       "fire_rule": "all_arrived_minus_gap",
       "state": "S3",
-      "t_star": 20.5
+      "t_star": 40.6
     }
   ],
   "commitment": {
-    "UGV1": "L1"
+    "UGV2": "L1"
   },
-  "_J": 10.41393400941134,
-  "bottleneck": 20.52786801882268,
-  "total": 20.52786801882268,
+  "_J": 20.43200320779791,
+  "bottleneck": 40.56400641559582,
+  "total": 40.56400641559582,
   "idle": [],
   "line": {
     "leader": null,
@@ -35,7 +35,7 @@
     "formation": "none",
     "anchor": null
   },
-  "t_plan": 1793986027.0976965,
+  "t_plan": 1793986782.4699636,
   "schema": 1,
-  "plan_id": 31
+  "plan_id": 33
 }
