@@ -225,6 +225,14 @@ class UavRunner(object):
                                  self.indices[name], len(self.routes[name]) - 1, point)
 
         for name in cu.UAV_NAMES:
+            # 悬停阶段没必要 4 Hz 发指令：SDK 调用偶发阻塞 >60 s，降频可显著降低卡死概率
+            if self.phases.get(name) == "hold":
+                _now = time.time()
+                if (_now - getattr(self, "_hold_cmd_t", {}).get(name, 0.0)) < 1.0:
+                    continue
+                if not hasattr(self, "_hold_cmd_t"):
+                    self._hold_cmd_t = {}
+                self._hold_cmd_t[name] = _now
             self.vehicles[name].target_point_control(*commands[name])
 
         # ---- 探测 ----

@@ -789,6 +789,12 @@ def parse_args():
 #  主流程
 # ---------------------------------------------------------------------------
 def main():
+    # 卡死诊断：每 60 s 把调用栈打到 stderr，定位"日志停在某一时刻"的问题
+    try:
+        import faulthandler
+        faulthandler.dump_traceback_later(60, repeat=True)
+    except Exception:
+        pass
     args = parse_args()
 
     # 场景里到底放了多少个敌人（targets.json 的 count 之和）——

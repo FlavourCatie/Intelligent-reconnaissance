@@ -424,7 +424,13 @@ class UgvAgent:
             return
 
         # 探测路障
-        ob = self.ugv.detect_fun()
+        # 【节流】detect_fun 是阻塞式 SDK 调用（实测会卡住 >60 s），0.5 s 缓存降低调用频率
+        _now_det = time.time()
+        if (getattr(self, "_ob_cache", None) is None
+                or (_now_det - getattr(self, "_ob_t", 0.0)) > 0.5):
+            self._ob_cache = self.ugv.detect_fun()
+            self._ob_t = _now_det
+        ob = self._ob_cache
 
         # 队友避让 / 超车: 正前方近距离有其它 UGV(RaiderBuggy) → 先刹停等待;
         # 连续停死超过 OVERTAKE_TIMEOUT → 侧偏超车。
