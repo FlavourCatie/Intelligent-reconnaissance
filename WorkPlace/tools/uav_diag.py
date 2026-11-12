@@ -157,7 +157,7 @@ def cmd_takeoff(args):
     time.sleep(args.baseline)
     x1, y1, z1 = pos()
     log("静置后   (%.1f, %.1f, %.1f)  位移 %.2f m"
-        % (x1, y1, z1, math.dist((x0, y0, z0), (x1, y1, z1))))
+        % (x1, y1, z1, math.sqrt((x1-x0)**2 + (y1-y0)**2 + (z1-z0)**2)))
 
     log("命令爬升到 z=%.0f（原地）速度 %.1f，观察 %.0f 秒 ..."
         % (args.z, args.speed, args.seconds))

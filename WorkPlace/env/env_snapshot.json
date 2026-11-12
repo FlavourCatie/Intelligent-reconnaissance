@@ -1,0 +1,52 @@
+{
+  "driver_type": "quadrotor",
+  "files": {
+    "sdk/windows/swarmae-1.1-py3.6-win-amd64.egg": {
+      "label": "SDK 本体",
+      "sha256_16": "08F2C016460498FB",
+      "size": 55380
+    },
+    "sdk/windows/swarmae_lib-0.1.1-py3.6-win-amd64.egg": {
+      "label": "libcarla 绑定",
+      "sha256_16": "3E0AFC6124C95B86",
+      "size": 1572663
+    },
+    "simu_driver_windows/bin/config.yaml": {
+      "label": "main-release 配置（端口表）",
+      "sha256_16": "FAA5758522492E01",
+      "size": 171
+    },
+    "simu_driver_windows/bin/driver/config.yaml": {
+      "label": "driver 配置（Type 在这）",
+      "sha256_16": "9E6E9DAD9424A2EB",
+      "size": 254
+    },
+    "simu_driver_windows/bin/driver/driver.exe": {
+      "label": "driver（飞控驱动）",
+      "sha256_16": "1671514B46C31C2F",
+      "size": 5345862
+    },
+    "simu_driver_windows/bin/main-release.exe": {
+      "label": "main-release（飞控主控）",
+      "sha256_16": "C215B76ED47D319E",
+      "size": 1068032
+    }
+  },
+  "packages": {
+    "Pillow": "7.0.0",
+    "matplotlib": "3.3.4",
+    "numpy": "1.19.5",
+    "opencv-python": "4.4.0.40",
+    "pygame": "2.6.1",
+    "requests": "2.22.0",
+    "scipy": "1.5.4",
+    "setuptools": "44.1.0"
+  },
+  "paths": {
+    "course_env": "D:\\Intelligent Unmanned Systems\\environment_forclass\\environment",
+    "repo_root": "D:\\Intelligent Unmanned Systems\\Intelligent-reconnaissance",
+    "simu_driver": "D:\\Intelligent Unmanned Systems\\environment_forclass\\environment\\simu_driver_windows"
+  },
+  "platform": "win32",
+  "python": "3.6.13"
+}

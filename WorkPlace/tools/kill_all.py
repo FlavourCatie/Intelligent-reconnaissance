@@ -49,6 +49,10 @@ TARGETS = [
     ("subject3.exe", "场景脚本（D3）"),
     ("main-release.exe", "飞控主控"),
     ("driver.exe", "飞控驱动"),
+    # 【新增】SITL 本体。driver.exe 每次启动会拉起 3 个 model.exe，但结束 driver 时
+    # **不会**带走它们；反复重启就会攒下几十个孤儿 SITL（实测一次攒到 24 个），
+    # 它们抢 UDP/端口、干扰新场景，表现为"飞机莫名其妙没动力学/速度飙到几十 m/s"。
+    ("model.exe", "ArduPilot SITL（孤儿常客）"),
 ]
 
 

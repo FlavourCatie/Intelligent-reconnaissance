@@ -34,10 +34,15 @@ SCENE = "subject4.exe"
 ORDER_HINT = (
     "正确顺序（依据 environment_forclass/environment/kyxz.md 对 D4 组别的说明）：\n"
     "    1) CarlaUE4\n"
-    "    2) Materials\\simu_driver_windows\\start.bat  → 选 2（旋翼）\n"
+    "    2) start.bat  → 选 2（旋翼）\n"
     "    3) Materials\\practice\\practice1_Scene\\subject4.exe\n"
     "    4) 再跑算法脚本\n"
-    "  start.bat 要一直开着；它若比 CarlaUE4 先启动，世界还不存在，飞控绑不上飞机。"
+    "  start.bat 要一直开着；它若比 CarlaUE4 先启动，世界还不存在，飞控绑不上飞机。\n"
+    "  注意：start.bat 必须从**无空格路径**启动（例如 C:\\kyxz\\environment\\"
+    "simu_driver_windows\\start.bat），\n"
+    "        否则 driver 拉起 ArduPilot SITL 的命令行会被空格劈开，"
+    "飞控永远收不到心跳。\n"
+    "        一键处理：python WorkPlace\\tools\\sim_link.py --create"
 )
 
 
@@ -158,6 +163,19 @@ def check():
     if missing:
         result["problems"].append(
             "飞控驱动未运行：%s —— 无人机不会动。" % ", ".join(missing))
+
+    # 路径卫生：驱动的目录带空格 → SITL 命令行被劈开 → 心跳收不到
+    # （2026-11-02 定位，见 docs/飞控调通_根因与修复.md；有 C:\kyxz 入口就没事）
+    try:
+        from core import env_paths
+        drv = env_paths.find_simu_driver()
+        if drv and not env_paths.find_space_free_entry():
+            if any(code == "space" for code, _ in env_paths.path_problems(drv)):
+                result["problems"].append(
+                    "飞控驱动在带空格的路径下（%s）—— SITL 启动参数会被劈开，"
+                    "心跳收不到，飞机零位移。" % drv)
+    except Exception:
+        pass
 
     # 启动顺序：驱动应晚于 CarlaUE4
     sim_t = result["starts"].get(SIM)

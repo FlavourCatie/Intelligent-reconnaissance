@@ -755,3 +755,24 @@ python WorkPlace\selftest\run_main.py with-view
 - [ ] 已跑过 `python WorkPlace\missions\live_track.py --probe`，确认相机接口是否存在
 - [ ] 已跑过 `python WorkPlace\tools\reset_scene.py --snapshot`，存好场景基准
 - [ ] `WorkPlace\config\goals.json` 里的目标星标符合本次演示
+- [ ] **课程包路径不含空格**（飞控硬性要求）；带空格就 `python WorkPlace\tools\sim_link.py --create`，
+      并从 `C:\kyxz\environment\simu_driver_windows\start.bat` 启动驱动
+- [ ] 已跑过 `python WorkPlace\tools\env_guard.py`，FAIL 为 0
+
+---
+
+## 14. 排障专题（2026-11 补）
+
+中期之后又挖出两个"静默失效"的大坑，都做成了工具 + 文档：
+
+| 症状 | 先跑这个 | 结论 / 处理 |
+|---|---|---|
+| 无人机不动、驱动窗口只有横幅、`UAV#n: Connect Timeout` | `python WorkPlace\tools\sitl_probe.py` | 路径空格把 SITL 命令行劈开 → 无 MAVLink 心跳。处理：`python WorkPlace\tools\sim_link.py --create`，从 `C:\kyxz\...` 起 `start.bat`。详见 [docs/飞控调通_根因与修复.md](docs/飞控调通_根因与修复.md) |
+| 环境"越用越怪"：昨天能跑今天报错、依赖版本对不上 | `python WorkPlace\tools\env_guard.py`（`--diff` 看漂移） | 按 [docs/环境防污染规范.md](docs/环境防污染规范.md) 还原；基线在 `env/requirements.txt` + `env/env_snapshot.json` |
+
+三个工具都**只用标准库**、**只读不改环境**，随便哪个 Python 3 都能跑
+（`env_guard.py` 建议在 `kyxz` 里跑，才能看到依赖与 SDK 的真实状态）。
+
+配套模块：`core/env_paths.py` —— 统一解决"课程包到底在哪"（支持仓库内 / 工作区根 /
+`C:\kyxz` 联接 / `SWARMAE_ENV_ROOT` 环境变量四种放法），新写工具请直接用它，别再写死相对路径。
+

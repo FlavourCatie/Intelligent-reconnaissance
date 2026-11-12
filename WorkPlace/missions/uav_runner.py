@@ -148,6 +148,24 @@ class UavRunner(object):
             self.start()
         t_begin = time.monotonic()
 
+        # ---- 处理改航请求（巡查中发现目标 → 改飞过去）----
+        # 注意：UavRunner 有自己的 step()，不走 control_uav.run_controller，
+        # 所以队列必须在这里消费（之前只加在 run_controller 里，等于没生效）。
+        with cu._lock:
+            pending = list(cu._retarget_queue)
+            del cu._retarget_queue[:]
+        for assignment in pending:
+            for name, points in assignment.items():
+                if name not in self.routes or not points:
+                    continue
+                here = self.vehicles[name].position()
+                self.routes[name] = [here] + [tuple(p[:2]) for p in points]
+                self.indices[name] = 1
+                self.phases[name] = "cruise"
+                self.last_goals.pop(name, None)
+                self.logger.info("RETARGET %s -> %s", name,
+                                 [(round(p[0], 1), round(p[1], 1)) for p in points])
+
         positions = dict((name, self.vehicles[name].position())
                          for name in cu.UAV_NAMES)
         commands, updates = {}, {}
@@ -156,7 +174,13 @@ class UavRunner(object):
         for name in cu.UAV_NAMES:
             point, route = positions[name], self.routes[name]
             if not self.planner.point_safe(point):
-                raise cu.SafetyError(name + " left the reserved safe flight envelope")
+                # 【关键修正】某一架飞出安全区（比如贴近禁飞区）时，只让它自己往起点撤，
+                # 绝不能 raise 把三架一起停掉 —— 之前就是这个导致"全员悬停、地图不再更新"。
+                self.logger.warning("%s outside safe envelope -> returning to start", name)
+                safe = route[0]
+                commands[name] = (safe[0], safe[1], cu.ALTITUDE, cu.CRUISE_SPEED)
+                self.last_goals.pop(name, None)
+                continue
 
             if self.phases[name] == "takeoff":
                 self.stable[name] = self.stable[name] + 1 if (
@@ -166,7 +190,11 @@ class UavRunner(object):
                     self.phases[name], self.indices[name] = "cruise", 1
                     self.logger.info("%s reached Z=250; starting search", name)
             elif abs(point[2] - cu.ALTITUDE) > 5.0:
-                raise cu.SafetyError(name + " cruise altitude deviated by more than 5 m")
+                # 【不再整组停机】以前这里 raise SafetyError，一架高度抖一下就把三架
+                # 全部停掉（表现为"阶段还是 crui、速度却是 0、地图不再推进"）。
+                # 现在只记一条告警，继续把高度压回巡航值。
+                self.logger.warning("%s altitude deviation %.1f m, re-commanding",
+                                    name, point[2] - cu.ALTITUDE)
 
             index = self.indices[name]
             if self.phases[name] == "cruise":
@@ -179,7 +207,10 @@ class UavRunner(object):
 
             goal = route[min(self.indices[name], len(route) - 1)]
             if not self.planner.segment_safe(point, goal):
-                raise cu.SafetyError(name + " actual-position-to-waypoint segment is unsafe")
+                # 航段不安全也别整组停：跳过这个航点（下一帧会自动用下一个）
+                self.logger.warning("%s segment unsafe -> skip waypoint %s", name, goal)
+                self.indices[name] = min(self.indices[name] + 1, len(route) - 1)
+                goal = route[self.indices[name]]
 
             speed = 0.0 if self.phases[name] == "hold" else cu.CRUISE_SPEED
             commands[name] = (goal[0], goal[1], cu.ALTITUDE, speed)
@@ -194,6 +225,14 @@ class UavRunner(object):
                                  self.indices[name], len(self.routes[name]) - 1, point)
 
         for name in cu.UAV_NAMES:
+            # 悬停阶段没必要 4 Hz 发指令：SDK 调用偶发阻塞 >60 s，降频可显著降低卡死概率
+            if self.phases.get(name) == "hold":
+                _now = time.time()
+                if (_now - getattr(self, "_hold_cmd_t", {}).get(name, 0.0)) < 1.0:
+                    continue
+                if not hasattr(self, "_hold_cmd_t"):
+                    self._hold_cmd_t = {}
+                self._hold_cmd_t[name] = _now
             self.vehicles[name].target_point_control(*commands[name])
 
         # ---- 探测 ----

@@ -2,7 +2,6 @@
     {
         "type": "vehicle.imv.rb",
         "vehicles": [
-
             {
                 "position": "-1829.6, -517.7, 2.1",
                 "rotation": "0,0,0",
@@ -14,7 +13,7 @@
                 "rotation": "0,0,0",
                 "teamId": "1",
                 "detectRadius": 10000
-            },            
+            },
             {
                 "position": "-1887.4, -517.4, 2.1",
                 "rotation": "0,0,0",
@@ -27,19 +26,19 @@
         "type": "vehicle.hrt.m10",
         "vehicles": [
             {
-                "position": "-1875.2, -521.9, 100",
+                "position": "-1875.2, -570.0, 100",
                 "rotation": "0,0,0",
                 "teamId": "1",
                 "detectRadius": 30000
             },
             {
-                "position": "-1875.2, -519.4, 100",
+                "position": "-1830.0, -495.0, 100",
                 "rotation": "0,0,0",
                 "teamId": "1",
                 "detectRadius": 30000
             },
             {
-                "position": "-1875.2, -516.5, 100",
+                "position": "-1875.2, -450.0, 100",
                 "rotation": "0,0,0",
                 "teamId": "1",
                 "detectRadius": 30000

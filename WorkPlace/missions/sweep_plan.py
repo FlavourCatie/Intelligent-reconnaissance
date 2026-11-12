@@ -1,4 +1,4 @@
-﻿# -*- coding: utf-8 -*-
+# -*- coding: utf-8 -*-
 """
 sweep_plan.py —— 牛耕式（boustrophedon）覆盖扫描航线
 ================================================================================
@@ -162,36 +162,42 @@ def subdivide_strips(strips, n_parts):
     return out
 
 
-def split_strip_safe(strip, planner, step=15.0):
-    """把一条扫描线在禁飞区内切开，只保留安全子段。
 
-    为什么要切开而不是绕行：扫描线的意义是"覆盖"，
-    一旦为了绕禁飞区兜出去，那一段就漏扫了；切开只是跳过禁飞区本身
-    （那里本来也不允许进入），两侧照常扫。
-    """
+def split_strip_safe(strip, planner, step=15.0):
+    """Split a strip into safe segments, keeping only safe endpoints."""
     (ax, ay), (bx, by) = strip
-    L = math.hypot(bx - ax, by - ay)
-    if planner is None or L < 1e-6:
+    if planner is None:
         return [(tuple(strip[0]), tuple(strip[1]))]
-    n = max(1, int(math.ceil(L / step)))
-    runs, cur = [], None
+
+    length = math.hypot(bx - ax, by - ay)
+    n = max(1, int(math.ceil(length / step)))
+    runs = []
+    cur = None
+    last = None
+
+    def save_run():
+        if cur is not None and last is not None:
+            if math.hypot(last[0] - cur[0], last[1] - cur[1]) > 1.0:
+                runs.append((cur, last))
+
     for i in range(n + 1):
-        t_ = i / float(n)
-        x = ax + (bx - ax) * t_
-        y = ay + (by - ay) * t_
-        try:
-            ok = planner.point_safe((x, y), True)
-        except Exception:
-            ok = True
-        if ok and cur is None:
-            cur = (x, y)
-        elif not ok and cur is not None:
-            runs.append((cur, (x, y)))
+        t = i / float(n)
+        point = (ax + (bx - ax) * t, ay + (by - ay) * t)
+
+        if planner.point_safe(point, True):
+            if cur is None:
+                cur = point
+            elif not planner.segment_safe(last, point, True):
+                save_run()
+                cur = point
+            last = point
+        else:
+            save_run()
             cur = None
-    if cur is not None:
-        runs.append((cur, (bx, by)))
-    return [(a, b) for a, b in runs
-            if math.hypot(b[0] - a[0], b[1] - a[1]) > 1.0]
+            last = None
+
+    save_run()
+    return runs
 
 
 def segment_len(strip):
@@ -289,7 +295,10 @@ def strip_routes(strip_run_lists, indices, start, keep_order=False):
 
 
 def path_length(route):
-    return sum(math.dist(a, b) for a, b in zip(route, route[1:]))
+    return sum(
+        math.hypot(b[0] - a[0], b[1] - a[1])
+        for a, b in zip(route, route[1:])
+    )
 
 
 def split_longest(strip_run_lists, n_want):
@@ -413,7 +422,7 @@ def choose_partition(strip_run_lists, starts, n_uav):
 
 def build_rects(region, n_uav, radius, starts, planner):
     """把区域切成 n 块矩形，每架机独立扫自己那一块。"""
-    spacing = 2.0 * radius
+    spacing = 1.4 * radius   # 圆形探测足迹：间距 √2·R 才能无缝覆盖（原来是 2R，条带之间留缝）
     rects = partition_rects(region, n_uav)
     routes, blocks = {}, []
     dead = []
@@ -422,6 +431,26 @@ def build_rects(region, n_uav, radius, starts, planner):
         strip_run_lists = [split_strip_safe(s, planner) for s in strips]
         runs = [r for rs in strip_run_lists for r in rs]
         total = sum(segment_len(r) for r in runs)
+        # 【补扫】只给"被禁飞区切断"的那几条条带各补两条（左右各偏 0.35·间距）。
+        # 不做整块二次扫描：那样 UAV2 航程会翻倍（实测 4.1 km -> 7.5 km）。
+        try:
+            extra = []
+            for s, rs in zip(strips, strip_run_lists):
+                if len(rs) <= 1:          # 没被切断的条带不补
+                    continue
+                (x0, y0), (x1, y1) = s
+                for d in (spacing * 0.35, -spacing * 0.35):
+                    if abs(y1 - y0) < 1e-9:      # 水平条带：上下偏移
+                        s2 = ((x0, y0 + d), (x1, y1 + d))
+                    else:                        # 竖直条带：左右偏移
+                        s2 = ((x0 + d, y0), (x1 + d, y1))
+                    extra.extend(split_strip_safe(s2, planner))
+            if extra:
+                strip_run_lists = strip_run_lists + [extra]
+                runs = [r for rs in strip_run_lists for r in rs]
+                total = sum(segment_len(r) for r in runs)
+        except Exception:
+            pass
         routes[name] = strip_routes(strip_run_lists,
                                     list(range(len(strip_run_lists))),
                                     starts[name], keep_order=True)
@@ -454,7 +483,7 @@ def build(region, n_uav=3, radius=DETECT_R, starts=None, planner=None,
             step = blocks[0][2] if blocks else 0.0
             return routes, strips, [b[1] for b in blocks], step
 
-    spacing = 2.0 * radius
+    spacing = 1.4 * radius   # 圆形探测足迹：间距 √2·R 才能无缝覆盖（原来是 2R，条带之间留缝）
     strips, step = make_strips(region, spacing)
     # 扫描线条数少于无人机数时，把每条线再均分，保证每架机都有任务
     if len(strips) < n_uav:

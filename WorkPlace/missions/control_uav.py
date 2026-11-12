@@ -23,8 +23,30 @@ DETECTED_PATH = os.path.join(WORKPLACE, "config", "detected.json")
 STATE_PATH = os.path.join(OUTPUT_DIR, "enemy_state.json")
 UAV_NAMES = ("UAV1", "UAV2", "UAV3")
 DT = 0.05
+#: 巡航高度（m）。由 --uav-altitude / set_altitude() 覆盖。
+#: 注意：ArduPilot SITL 的爬升率被 WPNAV_SPEED_UP 限死（实测 2.5 m/s），
+#: 所以高度每加 100 m 就要多花 40 s。演示/调试建议 120~150 m。
 ALTITUDE = 250.0
+#: 允许下发的 z 范围（起飞/巡航是 ALTITUDE，降落要能一路压到低空）
+MIN_ALTITUDE = 1.0
+MAX_ALTITUDE = 400.0
+#: 降落/收队的最低安全高度（m）。实测再往下 M10 会撞地形摔死（health 归零、
+#: actor 失效，之后所有指令都报 "is damaged"），所以别调低。
+SAFE_LAND_ALT = 40.0
 CRUISE_SPEED = 15.0
+#: SITL 上电后要先等 GPS home + EKF 收敛才能 arm，实测 20~60 s。
+#: 这段时间里命令返回 200 但飞机不动，属于正常现象，不能判成"飞控坏了"。
+ARM_TIMEOUT = 180.0
+#: 飞行指令下发周期（秒）。20 Hz 下发会把飞机加速到失控，实测 5 Hz 稳定。
+CMD_PERIOD = 0.2
+#: 纯跟踪前视距离（米）。SDK 是**比例式**速度控制：设定点离飞机越远推得越猛
+#: （实测 80 m 误差 ≈ 3 m/s，700 m 误差 ≈ 50 m/s 直接撞毁）。
+#: 所以设定点只放在飞机正前方 LOOKAHEAD 米处，把"位置误差"夹成常数 → 速度恒定。
+#: 想快就调大（速度 ≈ 0.04 × LOOKAHEAD），但超过 150 就开始不稳。
+LOOKAHEAD = 120.0
+#: 机间最小水平间隔（米）。小于它就让靠得近的那架悬停等一等。
+#: 三架机同高飞，撞一下就是"到点瞬间速度飙到 20+ m/s 然后全部损坏"。
+MIN_SEP = 35.0
 DETECT_EVERY = 10
 DETECT_RADIUS = 300.0
 CLUSTER_RADIUS = 15.0
@@ -33,7 +55,7 @@ SAFETY_MARGIN = 30.0
 ARENA_MARGIN = 10.0
 TRACK_RESERVE = 10.0
 CORNER_OFFSET = 5.0
-WAYPOINT_TOL = 3.0
+WAYPOINT_TOL = 8.0   # 到点判定（原来 3 m 太严：定点误差几米时飞机永远"到不了"，会在半路悬停不动）
 ALTITUDE_TOL = 2.0
 DEFAULT_ENEMIES = ((1535.5, -889.3), (1727.0, -741.0), (1985.0, -626.0))
 
@@ -42,10 +64,42 @@ discovered_enemies = []
 _lock = threading.RLock()
 _running = False
 _use_default = False
+#: 待处理的重定向请求：{UAV名: [(x, y), ...]}。控制线程每帧取一条执行，
+#: 用于"巡查中发现目标 → 立刻改飞目标坐标"。
+_retarget_queue = []
+
+
+def request_retarget(assignments):
+    """请求把若干架机改飞新的坐标（线程安全，由控制线程执行）。"""
+    if not assignments:
+        return
+    with _lock:
+        _retarget_queue.append(dict(assignments))
 
 
 class SafetyError(RuntimeError):
     pass
+
+
+def set_altitude(value):
+    """把巡航高度改成 value（米）。起飞、航点、降落都以它为基准。"""
+    global ALTITUDE
+    altitude = finite(value)
+    if not (10.0 <= altitude <= MAX_ALTITUDE):
+        raise SafetyError("altitude %.1f m out of range [10, %.0f]"
+                          % (altitude, MAX_ALTITUDE))
+    ALTITUDE = altitude
+    return ALTITUDE
+
+
+def set_waypoint_tol(value):
+    """到点判定半径（米）。真实飞行有定点误差，3 m 对 SITL 偏紧，goto 用 6~8 m。"""
+    global WAYPOINT_TOL
+    tol = finite(value)
+    if not (0.5 <= tol <= 50.0):
+        raise SafetyError("waypoint tolerance %.1f m out of range [0.5, 50]" % tol)
+    WAYPOINT_TOL = tol
+    return WAYPOINT_TOL
 
 
 def finite(value):
@@ -376,10 +430,14 @@ class _SdkLog(object):
 
 
 def sdk_call(logger, method, *args, **kwargs):
-    # The bundled SDK prints some errors internally; keep those out of the console.
     stream = _SdkLog(logger)
-    with contextlib.redirect_stdout(stream), contextlib.redirect_stderr(stream):
-        return method(*args, **kwargs)
+    original_argv = sys.argv
+    try:
+        sys.argv = original_argv[:1]
+        with contextlib.redirect_stdout(stream), contextlib.redirect_stderr(stream):
+            return method(*args, **kwargs)
+    finally:
+        sys.argv = original_argv
 
 
 class UavVehicle(object):
@@ -411,10 +469,16 @@ class UavVehicle(object):
 
     def target_point_control(self, x, y, z, v):
         self.validate()
-        if abs(z - ALTITUDE) > 1e-9 or v not in (0.0, CRUISE_SPEED):
-            raise SafetyError("Only Z=250 and speed=15/hover=0 are permitted")
+        # 【修正】原来只允许 z 恒等于 ALTITUDE，降落和"先降后升"的过渡都发不出去。
+        # 现在只卡安全高度区间 + 允许的两种速度。
+        z = finite(z)
+        if not (MIN_ALTITUDE <= z <= MAX_ALTITUDE):
+            raise SafetyError("Z=%.1f m outside [%.0f, %.0f]"
+                              % (z, MIN_ALTITUDE, MAX_ALTITUDE))
+        if finite(v) not in (0.0, CRUISE_SPEED):
+            raise SafetyError("Only speed=%.0f or hover=0 are permitted" % CRUISE_SPEED)
         result = sdk_call(self.logger, self.Vehicle_.control_kinetic_simply_global,
-                          finite(x), finite(y), ALTITUDE, finite(v), int(time.time() * 1000))
+                          finite(x), finite(y), z, finite(v), int(time.time() * 1000))
         # 【集成方修改】状态码位置在不同 SDK 方法/版本里不一致：
         #   apply_vehicle_control 返回 (frame_timestamp, code)   -> code 在第 2 位
         #   control_kinetic_simply 文档列的是 (code, frame_timestamp) -> code 在第 1 位
@@ -468,6 +532,102 @@ def hover_uavs(vehicles, planner, logger):
             logger.exception("Could not hold %s", name)
 
 
+def spread_uavs(vehicles, logger, spacing=45.0):
+    """起飞前把三架机沿圆周错开，避免"同点起飞"互相撞。
+
+    课程场景里三架 M10 的出生点只相隔 2~3 m（`vehicles.json` 写死的），
+    一起爬升时它们在物理上就是叠在一起的，实测会随机掉血/损毁。
+    这里在**同一高度**上把它们水平挪成半径 spacing 的等边三角，再开始起飞。
+    """
+    names = [n for n in UAV_NAMES if n in vehicles]
+    if len(names) < 2:
+        return
+    positions = [vehicles[n].position() for n in names]
+    cx = sum(p[0] for p in positions) / float(len(positions))
+    cy = sum(p[1] for p in positions) / float(len(positions))
+    cz = max(p[2] for p in positions)
+    moved = {}
+    for i, name in enumerate(names):
+        angle = 2.0 * math.pi * i / float(len(names))
+        tx = cx + spacing * math.cos(angle)
+        ty = cy + spacing * math.sin(angle)
+        try:
+            actor = vehicles[name].actor
+            transform = actor.get_transform()
+            transform.location.x = tx
+            transform.location.y = ty
+            transform.location.z = cz
+            actor.set_transform(transform)
+            moved[name] = (round(tx, 1), round(ty, 1))
+        except Exception:
+            logger.exception("spread failed for %s", name)
+    time.sleep(1.0)
+    logger.info("SPREAD %s radius=%.0f m", moved, spacing)
+
+
+def land_uavs(vehicles, logger, ground=None, step=6.0, timeout=200.0, dt=0.5):
+    """把三架机垂直降下来并稳住（本仓库里的"降落/收队"）。
+
+    实现说明：SDK 只有"飞到某点"一个接口，没有独立 LAND 指令，所以这里用
+    **逐级下降的设定点**模拟降落：每轮把目标高度压 step 米，直到到达目标高度。
+
+    两个实测坑（详见 docs/飞控调参记录.md）：
+      1. 课程 SITL 不肯低于 10 m，再往下就停在 10.0 不动；
+      2. 压到 10 m 会把 M10 摔死（health 归零 → actor 失效 → 之后全部报 is damaged），
+         因为 M10 的物理关不掉，低空会撞地形。
+    所以默认落到 SAFE_LAND_ALT（40 m）就算收队，不要再往下压。
+
+    ground=None 时用 SAFE_LAND_ALT；返回 True 表示全部降到 ground + 3 m 以内。
+    """
+    if ground is None:
+        ground = SAFE_LAND_ALT
+    names = [n for n in UAV_NAMES if n in vehicles]
+    if not names:
+        return True
+    targets = dict((name, vehicles[name].position()[2]) for name in names)
+    logger.info("LAND start heights=%s -> %.1f m",
+                dict((n, round(targets[n], 1)) for n in names), ground)
+    deadline = time.monotonic() + timeout
+    last_log = 0.0
+    # 高度"下不去了"的判定：连续 STALL_SECS 秒高度几乎不变，就认为已经落到
+    # SITL 的地板（= 出生高度，UE 里 z=100 / practice2 z=10）。
+    # SITL 的原点在出生点，命令 z 再小也压不下去，所以不能写死"落到 40 m"。
+    last_height = dict((n, targets[n]) for n in names)
+    last_move = time.monotonic()
+    STALL_SECS, STALL_EPS = 8.0, 0.3
+    while time.monotonic() < deadline:
+        all_low = True
+        for name in names:
+            try:
+                x, y, current = vehicles[name].position()[:3]
+                targets[name] = max(ground, min(targets[name], current) - step)
+                vehicles[name].target_point_control(x, y, targets[name], 0.0)
+                if current > ground + 3.0:
+                    all_low = False
+            except Exception:
+                logger.exception("LAND command failed for %s", name)
+                all_low = False
+        heights = dict((n, round(vehicles[n].position()[2], 1)) for n in names)
+        if all(abs(heights[n] - last_height[n]) > STALL_EPS for n in names):
+            last_move = time.monotonic()
+        elif time.monotonic() - last_move > STALL_SECS:
+            logger.info("LAND settled (SITL floor) heights=%s", heights)
+            return True
+        last_height = heights
+        now = time.monotonic()
+        if now - last_log >= 5.0:
+            last_log = now
+            logger.info("LAND height=%s target=%s", heights,
+                        dict((n, round(targets[n], 1)) for n in names))
+        if all_low:
+            logger.info("LAND done heights=%s", heights)
+            return True
+        time.sleep(dt)
+    logger.warning("LAND timeout; heights=%s",
+                   dict((n, round(vehicles[n].position()[2], 1)) for n in names))
+    return False
+
+
 def run_controller(vehicles, planner, routes, logger, use_default=False):
     global _running, _use_default
     _running, _use_default = True, bool(use_default)
@@ -476,6 +636,9 @@ def run_controller(vehicles, planner, routes, logger, use_default=False):
     stable = dict((name, 0) for name in UAV_NAMES)
     last_goals, frame, next_tick = {}, 0, time.monotonic()
     next_status, next_overrun = next_tick, next_tick
+    takeoff_started = time.monotonic()
+    next_arm_log = takeoff_started + 10.0
+    last_cmd_sent = 0.0
     try:
         with _lock:
             discovered_enemies[:] = []
@@ -484,7 +647,56 @@ def run_controller(vehicles, planner, routes, logger, use_default=False):
             logger.warning("SYNTHETIC defaults enabled until the first real discovery")
         while True:
             positions = dict((name, vehicles[name].position()) for name in UAV_NAMES)
+
+            # ---- 起飞/上电等待播报 ----
+            # SITL 要先等 GPS home + EKF 收敛才 arm，这段时间命令返回 200 但没有位移。
+            # 以前的实现把这段静默当成"飞控不可用"、60 s 就放弃；这里明确播报并耐心等。
+            if any(phases[name] == "takeoff" for name in UAV_NAMES):
+                now_wait = time.monotonic()
+                if now_wait >= next_arm_log:
+                    waited = now_wait - takeoff_started
+                    logger.info(
+                        "WAIT takeoff/arm %.0fs  Z=%s -> target %.0f  (arm 需 20~60 s，属正常)",
+                        waited, [round(positions[n][2], 1) for n in UAV_NAMES], ALTITUDE)
+                    next_arm_log = now_wait + 10.0
+                    if waited > ARM_TIMEOUT:
+                        raise SafetyError(
+                            "UAV did not leave the ground within %.0f s; check that "
+                            "main-release.exe + driver.exe are running and the driver log "
+                            "shows 'Arming motors'" % ARM_TIMEOUT)
+
+            # ---- 机间防撞 ----
+            # 三架机同高飞行，靠得近就会互相撞（实测三架飞同一个目标点时，到点瞬间
+            # 速度飙到 23 m/s 然后全部损坏）。原来这里是直接抛 SafetyError 把整个
+            # 任务打死；现在改成"离得近的那架就地悬停"，让另一架先走。
+            too_close = set()
+            for i, first in enumerate(UAV_NAMES):
+                for second in UAV_NAMES[i + 1:]:
+                    separation = distance(positions[first], positions[second])
+                    if separation < MIN_SEP:
+                        too_close.add(first)
+                        too_close.add(second)
+                        if separation < 12.0:
+                            logger.warning("SEPARATION %s/%s = %.1f m, holding both",
+                                           first, second, separation)
+
+            # ---- 重定向（巡查发现目标 → 改飞目标坐标）----
+            with _lock:
+                pending = list(_retarget_queue)
+                del _retarget_queue[:]
+            for assignment in pending:
+                for name, points in assignment.items():
+                    if name not in routes or not points:
+                        continue
+                    routes[name] = [positions[name]] + list(points)
+                    indices[name] = 1
+                    phases[name] = "cruise"
+                    logger.info("RETARGET %s -> %s", name,
+                                [(round(p[0], 1), round(p[1], 1)) for p in points])
+                    too_close.discard(name)
+
             commands, updates = {}, {}
+
             # Validate all three next commands before sending any of this frame.
             for name in UAV_NAMES:
                 point, route = positions[name], routes[name]
@@ -496,9 +708,9 @@ def run_controller(vehicles, planner, routes, logger, use_default=False):
                         and distance(point, route[0]) <= WAYPOINT_TOL) else 0
                     if stable[name] >= 5:
                         phases[name], indices[name] = "cruise", 1
-                        logger.info("%s reached Z=250; starting search", name)
-                elif abs(point[2] - ALTITUDE) > 5.0:
-                    raise SafetyError(name + " cruise altitude deviated by more than 5 m")
+                        logger.info("%s reached Z=%.0f; starting search", name, ALTITUDE)
+                elif abs(point[2] - ALTITUDE) > 15.0:
+                    raise SafetyError(name + " cruise altitude deviated by more than 15 m")
                 index = indices[name]
                 if phases[name] == "cruise":
                     if index < len(route) and distance(point, route[index]) <= WAYPOINT_TOL:
@@ -511,17 +723,38 @@ def run_controller(vehicles, planner, routes, logger, use_default=False):
                 if not planner.segment_safe(point, goal):
                     raise SafetyError(name + " actual-position-to-waypoint segment is unsafe")
                 speed = 0.0 if phases[name] == "hold" else CRUISE_SPEED
-                commands[name] = (goal[0], goal[1], ALTITUDE, speed)
+                # 【关键修正】这套 SDK 的“飞向某点”是**比例式**的：设定点离飞机越远，
+                # 飞机被推得越快（实测 700 m 误差 → 50 m/s，直接撞地；80 m 误差 → 3 m/s 很稳）。
+                # 所以不能把远处的航点直接当设定点下发，只发航点方向 LOOKAHEAD 米处的点，
+                # 相当于纯跟踪（pure pursuit），速度就稳定在 CRUISE_SPEED 附近。
+                dx, dy = goal[0] - point[0], goal[1] - point[1]
+                ahead = math.hypot(dx, dy)
+                if name in too_close:
+                    # 有人靠得太近：原地悬停，别把设定点继续往前推
+                    cmd_xy = (point[0], point[1])
+                elif speed > 0 and ahead > LOOKAHEAD:
+                    ratio = LOOKAHEAD / ahead
+                    cmd_xy = (point[0] + dx * ratio, point[1] + dy * ratio)
+                else:
+                    cmd_xy = (goal[0], goal[1])
+                commands[name] = (cmd_xy[0], cmd_xy[1], ALTITUDE, speed)
                 if last_goals.get(name) != goal:
                     updates[name] = goal
             if updates:
                 sync_goals(updates)
                 last_goals.update(updates)
                 for name, point in updates.items():
-                    logger.info("WAYPOINT %s %d/%d XY=%s Z=250", name,
-                                indices[name], len(routes[name])-1, point)
-            for name in UAV_NAMES:
-                vehicles[name].target_point_control(*commands[name])
+                    logger.info("WAYPOINT %s %d/%d XY=%s Z=%.0f", name,
+                                indices[name], len(routes[name])-1, point, ALTITUDE)
+            # 【修正】原来每个 20 Hz 的主循环都发一次飞行指令（50 次/秒）。
+            # 实测这样会让飞机被反复"加速"：水平速度冲到 21→68 m/s，随后撞地、
+            # health 归零（表现是机高变成 '?'、之后所有指令报 is damaged）。
+            # 改成 5 Hz 下发（0.2 s 一次）；SDK 本身也是按帧位姿控制，不需要更高频。
+            now_cmd = time.monotonic()
+            if now_cmd - last_cmd_sent >= CMD_PERIOD:
+                for name in UAV_NAMES:
+                    vehicles[name].target_point_control(*commands[name])
+                last_cmd_sent = now_cmd
             frame += 1
             if frame % DETECT_EVERY == 0:
                 fresh = []
@@ -580,6 +813,10 @@ def main(argv=None):
                         help="Override scene-order inference; actual actor types are still checked")
     parser.add_argument("--use-default", action="store_true",
                         help="Publish synthetic coordinates only until real enemies are detected")
+    parser.add_argument("--altitude", type=float, default=None,
+                        help="巡航高度 m（默认 %.0f；SITL 爬升约 2.5 m/s，越高起飞越慢）" % ALTITUDE)
+    parser.add_argument("--land", action="store_true",
+                        help="退出前把飞机降到安全低空并稳住")
     mode = parser.add_mutually_exclusive_group()
     mode.add_argument("--output-only", action="store_true",
                       help="With --use-default: test feeds without importing SDK or flying")
@@ -589,6 +826,12 @@ def main(argv=None):
     if args.output_only and not args.use_default:
         parser.error("--output-only requires --use-default")
     logger, log_path = make_logger()
+    if args.altitude is not None:
+        try:
+            set_altitude(args.altitude)
+        except SafetyError as e:
+            parser.error(str(e))
+    vehicles = {}
     try:
         if args.output_only:
             with _lock:
@@ -601,7 +844,8 @@ def main(argv=None):
         planner = SafePlanner(read_json(os.path.join(scene, "game.json")))
         entries = scene_uavs(scene)
         node_nos = args.node_nos or [entry[0] for entry in entries]
-        logger.info("CONFIG scene=%s node_nos=%s Z=250 speed=15 DT=0.05", scene, node_nos)
+        logger.info("CONFIG scene=%s node_nos=%s Z=%.0f speed=%.0f DT=%.2f", scene, node_nos,
+                    ALTITUDE, CRUISE_SPEED, DT)
         if args.plan_only:
             starts = dict((name, entry[1]) for name, entry in zip(UAV_NAMES, entries))
             routes = search_routes(planner, starts)
@@ -627,6 +871,11 @@ def main(argv=None):
         sys.stderr.write("UAV module stopped; see log: %s\n" % log_path)
         return 1
     finally:
+        if args.land and vehicles:
+            try:
+                land_uavs(vehicles, logger)
+            except Exception:
+                logger.exception("landing failed")
         _running = False
 
 

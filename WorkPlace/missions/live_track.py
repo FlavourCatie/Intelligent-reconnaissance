@@ -1,4 +1,4 @@
-﻿# -*- coding: utf-8 -*-
+# -*- coding: utf-8 -*-
 """
 live_track.py —— 战场态势显示（**纯显示层，不控制和规划任何东西**）
 ================================================================================
@@ -779,6 +779,8 @@ class LiveView(object):
         self.types = dict(types)
         self.zoom = float(zoom)
         self.trail_max = int(trail_max)
+        self._scan_seen = {}          # 每架机最近一次画过的扫描点
+        self.scan_radius_px = 300.0   # 探测半径（像素=米），由 full_mission 注入
         self.focus = focus if focus in self.names else (self.names[0] if self.names else None)
         self.show_help = True
         self.show_lines = show_lines
@@ -812,7 +814,7 @@ class LiveView(object):
             pass
 
         self.fig, (self.ax_all, self.ax_zoom) = plt.subplots(
-            1, 2, figsize=(17, 9), gridspec_kw={"width_ratios": [1.25, 1.0]})
+            1, 2, figsize=(9.8, 7.0), gridspec_kw={"width_ratios": [1.25, 1.0]})
         for setter in (
             lambda: self.fig.canvas.manager.set_window_title(title),
             lambda: self.fig.canvas.set_window_title(title),
@@ -842,7 +844,7 @@ class LiveView(object):
             zorder=8, label=T("敌人·已探测", "enemy (detected)"))[0]
         self.mk_extra = self.ax_all.plot(
             [], [], "X", ms=8, mfc="#ffb000", mec="black", mew=0.8, linestyle="",
-            zorder=8, label=T("未登记目标", "unlisted"))[0]
+            zorder=8, label=T("已消灭/未登记", "killed"))[0]
         self.mk_hollow_z = self.ax_zoom.plot(
             [], [], "o", ms=10, mfc="none", mec="#ff5252", mew=1.8,
             linestyle="", zorder=7)[0]
@@ -909,7 +911,46 @@ class LiveView(object):
             loc="upper right", fontsize=8, framealpha=0.9)
         self.ax_all.set_xlim(0, scene.w)
         self.ax_all.set_ylim(scene.h, 0)
-        self.fig.tight_layout()
+
+        # 【界面改版】只保留局部地图：隐藏总览轴，局部图铺满窗口；
+        # 图例与状态栏都改挂到局部图上，底部一行显示全局状态。
+        try:
+            self.ax_all.set_visible(False)
+            # 地图占左上方，右侧留图例，下方留状态色块
+            self.ax_zoom.set_position([0.235, 0.240, 0.400, 0.620])
+            self.ax_all.get_legend().remove()
+        except Exception:
+            pass
+        self.legend = self.ax_zoom.legend(
+            handles=[
+                Line2D([], [], marker="s", ls="", color="#ff7f0e",
+                       label=T("UGV 无人车", "UGV")),
+                Line2D([], [], marker="^", ls="", color="#1f77b4",
+                       label=T("UAV 无人机", "UAV")),
+            ] + list(self.ax_all.get_legend_handles_labels()[0]),
+            loc="upper left", bbox_to_anchor=(-0.56, 1.00), fontsize=8.0,
+            framealpha=0.92, borderaxespad=0.0)
+        # 底部状态：每台车/机一个色块，另加一个总状态块（黑字 + 浅色底）
+        self.status_texts = {}
+        _styles = {"UAV": "#dcebff", "UGV": "#ffe6cc"}
+        for _i, _nm in enumerate(self.names):
+            _col = 0 if _i < 3 else 1
+            _row = _i % 3
+            _key = "UAV" if str(_nm).upper().startswith("UAV") else "UGV"
+            self.status_texts[_nm] = self.fig.text(
+                0.700, ((0.790 - _row * 0.035) if _i < 3 else (0.610 - _row * 0.035)), _nm,
+                fontsize=8, family="monospace", color="black", va="center",
+                bbox=dict(boxstyle="round,pad=0.35", fc=_styles[_key],
+                          ec="#888888", lw=0.6))
+        self.status_sum = self.fig.text(
+            0.210, 0.090, "", fontsize=8.5, family="monospace", color="black",
+            va="center", bbox=dict(boxstyle="round,pad=0.45", fc="#f2f2f2",
+                                   ec="#888888", lw=0.6))
+
+        # 不能用 tight_layout()：它会覆盖上面 set_position 的布局，把地图挤到角落、
+        # 留出大片空白（之前就是这样）。手动固定边距。
+        # 注意：这里不能再调 subplots_adjust / tight_layout ——
+        # 它们会把上面 set_position 设定的位置覆盖回"网格第二格"（地图永远在右半边）。
 
         try:
             self.fig.canvas.mpl_connect("key_press_event", self._on_key)
@@ -970,6 +1011,28 @@ class LiveView(object):
         return path
 
     # ---------------- 敌人图层 ----------------
+    def set_encircle(self, points, radius=45.0):
+        """把需要合围打击的敌人用黄色圆圈标出来（半径按米，默认 45 m）。"""
+        try:
+            if getattr(self, "_enc_patches", None) is None:
+                self._enc_patches = []
+            for p in self._enc_patches:
+                try:
+                    p.remove()
+                except Exception:
+                    pass
+            self._enc_patches = []
+            import matplotlib.patches as mpatches
+            for (x, y) in points or []:
+                px, py = self.scene.to_px(x, y)
+                for ax in (self.ax_zoom,):
+                    c = mpatches.Circle((px, py), radius, fill=False,
+                                        ec="#ffd400", lw=2.2, ls="-", zorder=9)
+                    ax.add_patch(c)
+                    self._enc_patches.append(c)
+        except Exception:
+            pass
+
     def set_markers(self, markers):
         self.markers = list(markers)
         hx, hy, fx, fy, ex, ey = [], [], [], [], [], []
@@ -991,9 +1054,14 @@ class LiveView(object):
             pp.set_data(dx, dy)
 
     def discovered_count(self):
+        # 运行态给了真实数字就用真实数字（marker 可能不全，之前 HUD 会显示 0/4）
+        if getattr(self, "discovered_override", None) is not None:
+            return self.discovered_override
         return sum(1 for m in self.markers if m.discovered and not m.extra)
 
     def known_count(self):
+        if getattr(self, "known_override", None) is not None:
+            return self.known_override
         return sum(1 for m in self.markers if not m.extra)
 
     # ---------------- 目标 ----------------
@@ -1010,6 +1078,31 @@ class LiveView(object):
         self.goal_sources = dict(sources or {})
 
     # ---------------- 每帧更新 ----------------
+    def _mark_cover(self, cx, cy):
+        """把"探测半径覆盖到的格子"记下来，每格只画一次半透明方块。"""
+        import matplotlib.patches as mpatches
+        step = 200.0
+        r = float(self.scan_radius_px)
+        try:
+            covered = self._covered
+        except AttributeError:
+            self._covered = covered = set()
+        import math as _m
+        c0x, c1x = int(_m.floor((cx - r) / step)), int(_m.floor((cx + r) / step))
+        c0y, c1y = int(_m.floor((cy - r) / step)), int(_m.floor((cy + r) / step))
+        for ix in range(c0x, c1x + 1):
+            for iy in range(c0y, c1y + 1):
+                if (ix, iy) in covered:
+                    continue
+                gx, gy = (ix + 0.5) * step, (iy + 0.5) * step
+                if (gx - cx) ** 2 + (gy - cy) ** 2 > r * r:
+                    continue
+                covered.add((ix, iy))
+                for _ax in (self.ax_all, self.ax_zoom):
+                    _ax.add_patch(mpatches.Rectangle(
+                        (ix * step, iy * step), step, step,
+                        color="#66c2ff", alpha=0.12, lw=0, zorder=1))
+
     def update(self, snapshot, elapsed, extra=""):
         scene = self.scene
         moving = 0
@@ -1028,6 +1121,11 @@ class LiveView(object):
             if len(tr["x"]) > self.trail_max:
                 del tr["x"][0]
                 del tr["y"][0]
+            # 扫描覆盖：按 200 m 网格记账，每格只画一次（避免多个圆反复叠加变深）
+            try:
+                self._mark_cover(cx, cy)
+            except Exception:
+                pass
             if p.moving:
                 moving += 1
 
@@ -1097,6 +1195,22 @@ class LiveView(object):
             lines.append(LiveView.HELP)
         lines.append(T("在动 %d / %d 台", "moving %d / %d") % (moving, len(self.names)))
         self.hud.set_text("\n".join(lines))
+        try:
+            _body = lines[1:1 + len(self.names)]
+            for _i, _nm in enumerate(self.names):
+                if _i < len(_body):
+                    self.status_texts[_nm].set_text(_body[_i])
+            _sum = lines[0]
+            if 1 + len(self.names) < len(lines):
+                _sum = _sum + "    " + lines[1 + len(self.names)]
+            self.status_sum.set_text(_sum)
+        except Exception:
+            pass
+        try:
+            # 底部状态栏：一辆车/一架机一行，紧凑展示全局状态
+            self.hud_zoom.set_text("\n".join(lines))
+        except Exception:
+            pass
 
         # ---- 搜索区域（青绿实线）----
         if self.search_area is not None:

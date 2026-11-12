@@ -1,0 +1,41 @@
+{
+  "groups": [
+    {
+      "target_id": "E-390_-625",
+      "kind": "junction",
+      "junction_degree": 2,
+      "gap_branch": null,
+      "slots": [
+        {
+          "vid": "UGV1",
+          "branch": "W",
+          "pos": [
+            -408.5,
+            -625.3
+          ],
+          "hold": null,
+          "eta": 46.6
+        }
+      ],
+      "fire_rule": "all_arrived_minus_gap",
+      "state": "S3",
+      "t_star": 46.6
+    }
+  ],
+  "commitment": {
+    "UGV1": "L1"
+  },
+  "_J": 23.448885451403132,
+  "bottleneck": 46.59777090280627,
+  "total": 46.59777090280627,
+  "idle": [],
+  "line": {
+    "leader": null,
+    "members": [],
+    "formation": "none",
+    "anchor": null
+  },
+  "t_plan": 1793988862.5344136,
+  "schema": 1,
+  "plan_id": 37
+}
