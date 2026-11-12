@@ -33,7 +33,7 @@ TARGET_V     = 5.0     # 直道巡航 (m/s)
 SLOW_V       = 2.5     # 临近拐弯 (m/s)
 SLOW_RANGE   = 20.0    # 距拐弯多少米减速 (m)
 LOOKAHEAD    = 8.0     # 预瞄距离 (m)
-ARRIVE_DIST  = 20.0    # 距路网终点多近算到达 (m)
+ARRIVE_DIST  = 1.0     # 距路网终点多近算到达 (m)（阵位 30 m，停在 ~31 m 处开火）
 CLEARANCE    = 10.0    # 路障中心离路径多近算挡路 (m)
 MAX_RUNTIME  = 600.0   # 每台最长行驶 (s)
 MAX_REPLAN   = 5       # 每台最多重规划次数
@@ -132,9 +132,15 @@ def astar(binary, start, goal):
 
 
 def block_disk(grid, cx, cy, r):
+    """把以 (cx,cy) 为圆心、r 像素的圆置为不可通行（只改局部切片）。"""
     H, W = grid.shape
-    yy, xx = np.ogrid[:H, :W]
-    grid[(xx - cx) ** 2 + (yy - cy) ** 2 <= r * r] = False
+    cx, cy, r = int(cx), int(cy), int(math.ceil(r))
+    x0, x1 = max(0, cx - r), min(W, cx + r + 1)
+    y0, y1 = max(0, cy - r), min(H, cy + r + 1)
+    if x1 <= x0 or y1 <= y0:
+        return
+    yy, xx = np.ogrid[y0:y1, x0:x1]
+    grid[y0:y1, x0:x1][(xx - cx) ** 2 + (yy - cy) ** 2 <= r * r] = False
 
 
 def nearest_idx(path, x, y):
@@ -219,22 +225,35 @@ def needs_reverse(path, pose, look=6):
 
 
 class UgvAgent:
-    def __init__(self, ugv, name, target, binary, raw, scale, off):
+    def __init__(self, ugv, name, target, binary, raw, scale, off,
+                 role="strike", kind="strike"):
         self.ugv = ugv
         self.name = name
         self.target = target
         self.scale = scale
         self.off = off
         self.raw = raw
+        # role: strike=执行打击任务 / lead=编队领航（去集结点或前沿）/ follow=编队僚车
+        # kind: strike=目标是敌人阵位 / staging=目标是前沿待机点
+        self.role = role
+        self.kind = kind
+        # 到点后是否停车等合围（路口阵位为 True；路段目标为 False）
+        self.wait_at_target = False
+        # 路口合围时禁止路径穿过敌人；由 full_mission 在派车时设置
+        self.avoid_enemy = None
+        # 其它已知活敌（路过目标也要绕开，不能因为“不是我的目标”就穿过去）
+        self.avoid_enemies = []
+        self._apply_role_params()
         self.blocked_grid = binary.copy()
         self.blocked_obstacles = set()
         self.path = None
         self.corners = []
         self.replan_count = 0
-        self.status = 'init'   # init/drive/reverse/arrived/no_path/stuck/max_replan
+        self.status = 'init'   # init/drive/reverse/hold/arrived/no_path/stuck/max_replan
         self.stanley = control.Stanley(k=1)
         self.pid = control.PID(Kp=0.1, Ki=0.0, Kd=0.0)
         self.t0 = time.time()
+        self.leg_t0 = time.time()   # 本段路径的起始时刻（编队改派会重置，避免误判超时）
         self.prev = time.time()
         self.max_dev = 0.0
         self.last_dev = 0.0
@@ -250,11 +269,22 @@ class UgvAgent:
 
     # ---- 规划 ----
     def plan_from(self, pose):
-        sp = nearest_road(self.blocked_grid, *w2p(pose.x_, pose.y_, self.scale, self.off))
-        gp = nearest_road(self.blocked_grid, *w2p(*self.target, self.scale, self.off))
+        grid = self.blocked_grid
+        # 合围车：在路径规划里把敌人所在路口挖掉，物理上禁止“穿敌绕到另一侧”。
+        # 同时绕开所有已知活敌（包括不是自己目标的），只改本车临时网格。
+        _disks = list(self.avoid_enemies or [])
+        if self.avoid_enemy is not None:
+            _disks.append(tuple(self.avoid_enemy))
+        if _disks:
+            grid = grid.copy()
+            for ex, ey in _disks:
+                px, py = w2p(ex, ey, self.scale, self.off)
+                block_disk(grid, px, py, 13.0 / max(1e-6, self.scale))
+        sp = nearest_road(grid, *w2p(pose.x_, pose.y_, self.scale, self.off))
+        gp = nearest_road(grid, *w2p(*self.target, self.scale, self.off))
         if sp is None or gp is None:
             return None
-        pp = astar(self.blocked_grid, sp, gp)
+        pp = astar(grid, sp, gp)
         if pp is None:
             return None
         return [p2w(px, py, self.scale, self.off) for (px, py) in pp]
@@ -271,16 +301,106 @@ class UgvAgent:
     def start(self):
         pose = self.ugv.get_transform()
         self.path = self.plan_from(pose)
+        self.leg_t0 = time.time()
         if self.path is None:
+            if self.role == "follow":
+                self._hold("跟随点无路可达, 原地待命。")
+                return
             self.finish('no_path', "初始就无路可走, 停车上报。")
             return
         self.corners = detect_corners(self.path)
         self.status = 'drive'
         print("    [%s] 初始路径 %d 点 目标 %s" % (self.name, len(self.path), self.target))
 
+    # ---- 编队：换角色 / 换目标但不重建 agent ----
+    def _apply_role_params(self):
+        """僚车用更小的到点容差与跟车间距，否则会停在跟随点前 20 m，
+        编队永远收不拢（ARRIVE_DIST=20 是给打击车"到目标附近"用的）。"""
+        if self.role == "follow":
+            self.front_gap = 8.0
+            self.arrive_dist = 4.0
+            self.avoid_enemy = None
+            self.avoid_enemies = []
+        else:
+            self.front_gap = FRONT_GAP
+            self.arrive_dist = ARRIVE_DIST
+
+    def set_role(self, role, kind=None):
+        self.role = role
+        if kind is not None:
+            self.kind = kind
+        self._apply_role_params()
+
+    def retarget(self, target, role=None, kind=None):
+        """保持原 agent 换目标（编队跟随、任务分裂都走这里）。
+
+        与 finish()+start() 的区别：不重建对象、不清调参状态、不掉头急打舵；
+        路径从当前位姿重新规划，单段超时也从现在重新计时。
+        """
+        if target is None:
+            return False
+        old = self.target
+        same = (old is not None
+                and math.hypot(float(target[0]) - float(old[0]),
+                               float(target[1]) - float(old[1])) < 10.0)
+        if role is not None:
+            self.role = role
+        if kind is not None:
+            self.kind = kind
+        self._apply_role_params()
+        if same and self.status in ('drive', 'hold', 'init'):
+            return True
+        pose = self.ugv.get_transform()
+        # plan_from 用的是 self.target，所以必须先换目标再规划；失败则回滚
+        self.target = (float(target[0]), float(target[1]))
+        new_path = self.plan_from(pose)
+        if new_path is None:
+            self.target = old
+            return False
+        self.path = new_path
+        self.corners = detect_corners(new_path)
+        self.status = 'drive'
+        self.leg_t0 = time.time()
+        self.prev = time.time()
+        self.stuck_since = None
+        self.wait_since = None
+        self.wait_blocker = None
+        self.overtaking = False
+        self.overtake_blocker = None
+        self.max_dev = 0.0
+        # 编队僚车会每 1~2 s 改一次跟随点，打印会刷屏；打击/领航改派才打印
+        if self.role != "follow":
+            print("    [%s] 改派 %s 路径 %d 点" % (self.name, self.target, len(new_path)))
+        return True
+
+    def replan_with_avoid(self, avoid_points):
+        """更新“已知活敌”列表并重算路径（被别的敌人挡住时用）。"""
+        self.avoid_enemies = [tuple(p) for p in (avoid_points or [])]
+        pose = self.ugv.get_transform()
+        new_path = self.plan_from(pose)
+        if new_path is None:
+            return False
+        self.path = new_path
+        self.corners = detect_corners(new_path)
+        self.status = 'drive'
+        self.leg_t0 = time.time()
+        self.prev = time.time()
+        self.stuck_since = None
+        return True
+
+    def _hold(self, msg=None):
+        """僚车到达跟随点：停车待命，但保持 agent 存活，等下一拍改派。"""
+        self.status = 'hold'
+        try:
+            self.ugv.apply_control(0, 0, 0.8, False)
+        except Exception:
+            pass
+        if msg and self.role != "follow":
+            print("    [%s] %s" % (self.name, msg))
+
     # ---- 单步 ----
     def step(self):
-        if self.status in ('arrived', 'no_path', 'stuck', 'max_replan'):
+        if self.status in ('arrived', 'no_path', 'stuck', 'max_replan', 'hold'):
             return
         if self.status == 'reverse':
             self._step_reverse()
@@ -411,15 +531,24 @@ class UgvAgent:
         # （实测距目标 1.1 m），但离路网终点还 >20 m，于是永远不判到达，
         # 停在那儿 8 s 后被判成"疑似撞停 → stuck"。这里两个条件满足其一即到达。
         gx, gy = self.path[-1]
-        near_path_end = utils.distance(pose.x_, pose.y_, gx, gy) < ARRIVE_DIST
+        near_path_end = utils.distance(pose.x_, pose.y_, gx, gy) < self.arrive_dist
         near_target = (self.target is not None and utils.distance(
-            pose.x_, pose.y_, self.target[0], self.target[1]) < ARRIVE_DIST)
+            pose.x_, pose.y_, self.target[0], self.target[1]) < self.arrive_dist)
         if near_path_end or near_target:
+            if self.role == "follow":
+                # 僚车到跟随点只停车待命；主循环下一拍会按领航车新位置再改派
+                self._hold("到达跟随点 (%.1f,%.1f), 待命" % (pose.x_, pose.y_))
+                return
+            if getattr(self, "wait_at_target", False):
+                # 路口阵位：停车等合围，不能 finish（否则会被移出 agent 列表，
+                # 另一辆车到齐时已经没人可开火）
+                self._hold("到达阵位 (%.1f,%.1f)，等待合围" % (pose.x_, pose.y_))
+                return
             self.finish('arrived', "到达目标附近, 停车。位置(%.1f,%.1f) max_dev=%.1f m"
                         % (pose.x_, pose.y_, self.max_dev))
             return
 
-        if (time.time() - self.t0) > MAX_RUNTIME:
+        if (time.time() - self.leg_t0) > MAX_RUNTIME:
             self.finish('stuck', "超时停车。位置(%.1f,%.1f)" % (pose.x_, pose.y_))
             return
 
@@ -446,7 +575,7 @@ class UgvAgent:
                 dx = ob.x_ue[i] - pose.x_
                 dy = ob.y_ue[i] - pose.y_
                 d = math.hypot(dx, dy)
-                if 0.0 < d < FRONT_GAP and (dx * fwd[0] + dy * fwd[1]) > 0.3 * d:
+                if 0.0 < d < self.front_gap and (dx * fwd[0] + dy * fwd[1]) > 0.3 * d:
                     blocker = (ob.x_ue[i], ob.y_ue[i])
                     break
             if blocker is not None:
@@ -461,6 +590,10 @@ class UgvAgent:
                         self.wait_since = now
                         self.wait_blocker = blocker
                 if now - self.wait_since > OVERTAKE_TIMEOUT:
+                    if self.role == "follow":
+                        # 僚车不超领航车：前车停死就原地等，下一拍主循环会重算跟随点
+                        self.ugv.apply_control(0, 0, 0.8, False)
+                        return
                     self.wait_since = None
                     if self._try_overtake(blocker):
                         self.overtaking = True
@@ -515,7 +648,15 @@ class UgvAgent:
                 # 停在目标旁边也算完成，别报 stuck（终判是给"真卡住"用的）
                 if (self.target is not None and utils.distance(
                         pose.x_, pose.y_, self.target[0],
-                        self.target[1]) < ARRIVE_DIST * 1.5):
+                        self.target[1]) < self.arrive_dist * 1.5):
+                    if self.role == "follow":
+                        self._hold("已在跟随点旁停稳。位置(%.1f,%.1f)"
+                                   % (pose.x_, pose.y_))
+                        return
+                    if getattr(self, "wait_at_target", False):
+                        self._hold("已在阵位旁停稳。位置(%.1f,%.1f)"
+                                   % (pose.x_, pose.y_))
+                        return
                     self.finish('arrived', "已在目标旁停稳。位置(%.1f,%.1f)"
                                 % (pose.x_, pose.y_))
                     return

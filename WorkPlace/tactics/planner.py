@@ -68,8 +68,16 @@ class Tactics(object):
                 "wait": wait, "slots": slots,
             })
 
-        plan = assign_mod.solve(vehicles, targets, self.eta_fn,
-                                prev=self.prev, improvement=0.20, max_preempt=2)
+        if force:
+            # 强制重算 = 有新目标/原计划不可用：跳过防抖与承诺锁定，
+            # 否则新敌人会被旧计划的 20% 改进阈值一直挡住。
+            plan = assign_mod.solve(vehicles, targets, self.eta_fn,
+                                    prev=None, improvement=0.0,
+                                    max_preempt=99)
+        else:
+            plan = assign_mod.solve(vehicles, targets, self.eta_fn,
+                                    prev=self.prev, improvement=0.20,
+                                    max_preempt=2)
         if plan is None and not force:
             return None
 

@@ -7,7 +7,7 @@
     2 段    → 丁字（首尾夹击）
     1 段    → 路段中间，单车打
 
-阵位 = 沿"非缺口"的每个分支方向，在距敌人 standoff（默认 30 m）处取点，
+阵位 = 沿"非缺口"的每个分支方向，在距敌人 standoff（默认 24 m）处取点，
 再向本车来向回退 hold_back（默认 40 m）作为集结点。
 """
 
@@ -204,7 +204,7 @@ def classify(mask, center, ring=35.0):
     return "unknown", sec
 
 # ---------------------------------------------------------------- 阵位
-def build_slots(mask, center, branches, gap_index=None, standoff=18.0,
+def build_slots(mask, center, branches, gap_index=None, standoff=24.0,
                 hold_back=40.0, zone=None):
     """给每个"非缺口"分支生成一个阵位 + 集结点。
 
